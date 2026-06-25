@@ -1,0 +1,44 @@
+name: Build MF Cockpit (.exe)
+
+# Compile le .exe Windows à chaque push sur la branche, et permet aussi un
+# déclenchement manuel depuis l'onglet Actions (bouton "Run workflow").
+on:
+  push:
+    branches:
+      - claude/minecraft-tracker-gui-pnufuh
+    paths:
+      - "mf_cockpit.py"
+      - "mfcockpit/**"
+      - "MF_Cockpit.spec"
+      - "requirements.txt"
+      - ".github/workflows/build-exe.yml"
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build .exe (PyInstaller)
+        run: pyinstaller MF_Cockpit.spec
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MF_Cockpit-windows
+          path: dist/MF_Cockpit.exe
+          if-no-files-found: error
