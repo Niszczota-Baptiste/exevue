@@ -8,5 +8,6 @@ tzdata>=2024.1
 # Windows uniquement (best-effort, l'app dégrade proprement sans) :
 winotify>=1.1 ; sys_platform == "win32"
 winsdk>=1.0.0b10 ; sys_platform == "win32"
+pywin32>=306 ; sys_platform == "win32"  # contrôle iTunes (Apple Music) via COM
 # Empaquetage :
 pyinstaller>=6.0

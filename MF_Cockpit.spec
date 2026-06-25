@@ -8,7 +8,8 @@ Gère les hidden-imports/data des paquets qui se chargent dynamiquement
 """
 from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
-hidden = []
+hidden = ["pythoncom", "pywintypes", "win32com", "win32com.client",
+          "win32com.client.dynamic"]
 datas = []
 
 for pkg in ("mcstatus", "dns", "winotify", "winsdk", "winrt", "tzdata"):

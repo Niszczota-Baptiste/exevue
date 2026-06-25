@@ -23,9 +23,17 @@ try:
 except Exception:
     _STREAMS = False
 
+# iTunes (Apple) ne publie PAS sur SMTC : on l'atteint via son API COM.
+try:
+    import pythoncom  # noqa: F401  (fourni par pywin32)
+    import win32com.client  # noqa: F401
+    _ITUNES = True
+except Exception:
+    _ITUNES = False
+
 
 def available() -> bool:
-    return _AVAILABLE
+    return _AVAILABLE or _ITUNES
 
 
 def _run(coro):
@@ -88,14 +96,93 @@ async def _read_thumbnail(info):
         return None
 
 
-def poll():
-    """Renvoie {title, artist, album, playing, app} ou None. Best-effort."""
-    if not _AVAILABLE:
+# ---- iTunes (COM) ----
+
+def _itunes_running():
+    """Vrai si iTunes.exe tourne (évite de le lancer via COM)."""
+    try:
+        import psutil
+        for p in psutil.process_iter(["name"]):
+            if (p.info["name"] or "").lower() == "itunes.exe":
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _itunes_app():
+    if not _ITUNES or not _itunes_running():
         return None
     try:
-        return _run(_poll_async())
+        pythoncom.CoInitialize()  # thread de fond : init COM (idempotent)
+    except Exception:
+        pass
+    try:
+        # Dispatch dynamique : pas de cache makepy (fiable une fois gelé).
+        return win32com.client.dynamic.Dispatch("iTunes.Application")
     except Exception:
         return None
+
+
+def _itunes_poll():
+    app = _itunes_app()
+    if app is None:
+        return None
+    try:
+        track = app.CurrentTrack
+        if track is None:
+            return None
+        playing = False
+        try:
+            playing = int(app.PlayerState) == 1  # 1 = lecture
+        except Exception:
+            pass
+        return {
+            "title": getattr(track, "Name", "") or "",
+            "artist": getattr(track, "Artist", "") or "",
+            "album": getattr(track, "Album", "") or "",
+            "playing": playing,
+            "app": "iTunes",
+            "thumbnail": None,
+        }
+    except Exception:
+        return None
+
+
+def _itunes_control(action: str) -> bool:
+    app = _itunes_app()
+    if app is None:
+        return False
+    try:
+        if action == "playpause":
+            app.PlayPause()
+        elif action == "next":
+            app.NextTrack()
+        elif action == "prev":
+            app.PreviousTrack()
+        else:
+            return False
+        return True
+    except Exception:
+        return False
+
+
+def poll():
+    """Renvoie {title, artist, album, playing, app} ou None.
+
+    SMTC d'abord (navigateurs, Apple Music du Store…) ; repli iTunes COM.
+    """
+    res = None
+    if _AVAILABLE:
+        try:
+            res = _run(_poll_async())
+        except Exception:
+            res = None
+    if (not res or not res.get("title")) and _ITUNES:
+        it = _itunes_poll()
+        if it and it.get("title"):
+            return it
+    return res
 
 
 async def _control_async(action: str):
@@ -114,10 +201,13 @@ async def _control_async(action: str):
 
 
 def control(action: str) -> bool:
-    """playpause / next / prev. Best-effort, non bloquant côté UI."""
-    if not _AVAILABLE:
-        return False
-    try:
-        return bool(_run(_control_async(action)))
-    except Exception:
-        return False
+    """playpause / next / prev. SMTC si une session existe, sinon iTunes."""
+    if _AVAILABLE:
+        try:
+            if bool(_run(_control_async(action))):
+                return True
+        except Exception:
+            pass
+    if _ITUNES:
+        return _itunes_control(action)
+    return False
