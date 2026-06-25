@@ -1,0 +1,16 @@
+# Fichiers runtime générés à côté de l'exe
+config.json
+playtime.json
+attendance.log
+clipboard.json
+
+# Build PyInstaller
+build/
+dist/
+*.manifest
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/

@@ -1,0 +1,1 @@
+"""UI MF Cockpit (customtkinter)."""
