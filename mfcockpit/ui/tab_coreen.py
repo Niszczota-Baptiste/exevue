@@ -3,89 +3,101 @@ from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 
+from . import theme
+from .base import ThemedScroll
+from .theme import C
 
-class CoreenTab(ctk.CTkScrollableFrame):
+
+class CoreenTab(ThemedScroll):
     def __init__(self, master, app):
-        super().__init__(master, fg_color="transparent")
-        self.app = app
-        self.cfg = app.config_store
+        super().__init__(master, app)
         self.deck = app.deck
         self._queue = []
         self._current = None
-        self._revealed = False
         self._build()
-
-    def _section(self, title):
-        ctk.CTkLabel(self, text=title, font=("", 13, "bold"),
-                     anchor="w").pack(fill="x", padx=4, pady=(10, 2))
-        frame = ctk.CTkFrame(self)
-        frame.pack(fill="x", padx=4, pady=2)
-        return frame
 
     def _build(self):
         # --- révision ---
         f = self._section("Micro-révision")
-        self.card_kr = ctk.CTkLabel(f, text="—", font=("", 26, "bold"))
-        self.card_kr.pack(fill="x", padx=8, pady=(12, 2))
-        self.card_romaja = ctk.CTkLabel(f, text="", text_color="#888")
-        self.card_romaja.pack(fill="x", padx=8)
-        self.card_answer = ctk.CTkLabel(f, text="", font=("", 14),
-                                        wraplength=380, justify="center")
-        self.card_answer.pack(fill="x", padx=8, pady=(6, 8))
+        card = ctk.CTkFrame(f, fg_color=C["inset"], corner_radius=10,
+                            border_color=C["inset_border"], border_width=1)
+        card.pack(fill="x", pady=(0, 8))
+        self.card_kr = ctk.CTkLabel(card, text="—", font=theme.font("body", 30, "bold"),
+                                    text_color=C["accent_lt2"])
+        self.card_kr.pack(fill="x", padx=10, pady=(16, 2))
+        self.card_romaja = ctk.CTkLabel(card, text="", text_color=C["dim"],
+                                        font=theme.font("mono", 12))
+        self.card_romaja.pack(fill="x", padx=10)
+        self.card_answer = ctk.CTkLabel(card, text="", font=theme.font("body", 14),
+                                        wraplength=320, justify="center",
+                                        text_color=C["text"])
+        self.card_answer.pack(fill="x", padx=10, pady=(6, 14))
 
-        self.btn_reveal = ctk.CTkButton(f, text="Révéler",
-                                        command=self._reveal)
-        self.btn_reveal.pack(fill="x", padx=8, pady=2)
+        self.btn_reveal = ctk.CTkButton(f, text="Révéler", command=self._reveal,
+                                        fg_color=C["accent"], hover_color=C["accent_dk"],
+                                        text_color="#f6f2ff", border_width=0,
+                                        font=theme.font("head", 13, "bold"))
+        self.btn_reveal.pack(fill="x", pady=(0, 6))
         grade = ctk.CTkFrame(f, fg_color="transparent")
-        grade.pack(fill="x", padx=8, pady=(2, 10))
-        self.btn_no = ctk.CTkButton(grade, text="Pas su", fg_color="#7a3b3b",
-                                    command=lambda: self._grade(False))
-        self.btn_no.pack(side="left", expand=True, fill="x", padx=(0, 4))
-        self.btn_yes = ctk.CTkButton(grade, text="Su", fg_color="#2e7d4f",
-                                     command=lambda: self._grade(True))
-        self.btn_yes.pack(side="left", expand=True, fill="x", padx=(4, 0))
-        self.session_info = ctk.CTkLabel(f, text="", text_color="#888")
-        self.session_info.pack(fill="x", padx=8, pady=(0, 8))
-
-        ctk.CTkButton(f, text="Lancer une révision",
-                      command=self.start_session).pack(fill="x", padx=8, pady=(0, 8))
+        grade.pack(fill="x")
+        ctk.CTkButton(grade, text="Pas su", fg_color="#5a2740", hover_color="#7a3b3b",
+                      font=theme.font("head", 13, "bold"),
+                      command=lambda: self._grade(False)).pack(
+            side="left", expand=True, fill="x", padx=(0, 4))
+        ctk.CTkButton(grade, text="Su", fg_color="#1f6b48", hover_color="#2e7d4f",
+                      font=theme.font("head", 13, "bold"),
+                      command=lambda: self._grade(True)).pack(
+            side="left", expand=True, fill="x", padx=(4, 0))
+        self.session_info = ctk.CTkLabel(f, text="", text_color=C["dim"],
+                                         font=theme.font("body", 11))
+        self.session_info.pack(fill="x", pady=(6, 6))
+        ctk.CTkButton(f, text="Lancer une révision", command=self.start_session,
+                      font=theme.font("head", 12, "bold")).pack(fill="x")
 
         # --- réglages ---
         f = self._section("Réglages")
         row = ctk.CTkFrame(f, fg_color="transparent")
-        row.pack(fill="x", padx=8, pady=8)
-        ctk.CTkLabel(row, text="Mots / session :").pack(side="left")
-        self.wps = ctk.CTkEntry(row, width=50)
+        row.pack(fill="x")
+        ctk.CTkLabel(row, text="Mots / session", font=theme.font("body", 13),
+                     text_color=C["muted"]).pack(side="left")
+        ctk.CTkButton(row, text="OK", width=42, command=self._save_wps,
+                      fg_color=C["accent"], hover_color=C["accent_dk"],
+                      text_color="#f6f2ff", border_width=0,
+                      font=theme.font("head", 11, "bold")).pack(side="right")
+        self.wps = ctk.CTkEntry(row, width=52, justify="center",
+                                font=theme.font("mono", 13))
         self.wps.insert(0, str(self.cfg.get("korean.words_per_session", 3)))
-        self.wps.pack(side="left", padx=6)
-        ctk.CTkButton(row, text="OK", width=40, command=self._save_wps).pack(side="left")
+        self.wps.pack(side="right", padx=6)
 
-        # --- deck éditable ---
+        # --- deck ---
         f = self._section("Deck")
         impexp = ctk.CTkFrame(f, fg_color="transparent")
-        impexp.pack(fill="x", padx=8, pady=(8, 2))
-        ctk.CTkButton(impexp, text="Import CSV", width=86,
-                      command=lambda: self._import("csv")).pack(side="left", padx=2)
-        ctk.CTkButton(impexp, text="Import JSON", width=86,
-                      command=lambda: self._import("json")).pack(side="left", padx=2)
-        ctk.CTkButton(impexp, text="Export CSV", width=86,
-                      command=lambda: self._export("csv")).pack(side="left", padx=2)
-        ctk.CTkButton(impexp, text="Export JSON", width=86,
-                      command=lambda: self._export("json")).pack(side="left", padx=2)
+        impexp.pack(fill="x", pady=(0, 6))
+        for txt, kind, fn in (("Imp. CSV", "csv", self._import),
+                              ("Imp. JSON", "json", self._import),
+                              ("Exp. CSV", "csv", self._export),
+                              ("Exp. JSON", "json", self._export)):
+            ctk.CTkButton(impexp, text=txt, width=82, font=theme.font("head", 11, "bold"),
+                          command=lambda k=kind, f=fn: f(k)).pack(side="left", padx=2)
 
         addrow = ctk.CTkFrame(f, fg_color="transparent")
-        addrow.pack(fill="x", padx=8, pady=4)
-        self.add_kr = ctk.CTkEntry(addrow, placeholder_text="한국어", width=80)
+        addrow.pack(fill="x", pady=(0, 6))
+        self.add_kr = ctk.CTkEntry(addrow, placeholder_text="한국어", width=82,
+                                   font=theme.font("body", 13))
         self.add_kr.pack(side="left", padx=2)
-        self.add_romaja = ctk.CTkEntry(addrow, placeholder_text="romaja", width=80)
+        self.add_romaja = ctk.CTkEntry(addrow, placeholder_text="romaja", width=80,
+                                       font=theme.font("body", 12))
         self.add_romaja.pack(side="left", padx=2)
-        self.add_fr = ctk.CTkEntry(addrow, placeholder_text="français", width=90)
-        self.add_fr.pack(side="left", padx=2)
-        ctk.CTkButton(addrow, text="+", width=30,
-                      command=self._add_card).pack(side="left", padx=2)
+        self.add_fr = ctk.CTkEntry(addrow, placeholder_text="français",
+                                   font=theme.font("body", 12))
+        self.add_fr.pack(side="left", fill="x", expand=True, padx=2)
+        ctk.CTkButton(addrow, text="+", width=32, command=self._add_card,
+                      fg_color=C["accent"], hover_color=C["accent_dk"],
+                      text_color="#f6f2ff", border_width=0,
+                      font=theme.font("head", 13, "bold")).pack(side="left", padx=2)
 
         self.deck_list = ctk.CTkFrame(f, fg_color="transparent")
-        self.deck_list.pack(fill="x", padx=8, pady=(4, 8))
+        self.deck_list.pack(fill="x")
         self._render_deck()
 
     # ---- session ----
@@ -94,16 +106,16 @@ class CoreenTab(ctk.CTkScrollableFrame):
         self._next_card()
 
     def _next_card(self):
-        self._revealed = False
         if not self._queue:
             self._current = None
-            self.card_kr.configure(text="✓")
+            self.card_kr.configure(text="✓", text_color=C["green"])
             self.card_romaja.configure(text="")
             self.card_answer.configure(text="Rien à réviser pour l'instant.")
             self.session_info.configure(text="")
             return
         self._current = self._queue[0]
-        self.card_kr.configure(text=self._current.get("kr", "—"))
+        self.card_kr.configure(text=self._current.get("kr", "—"),
+                               text_color=C["accent_lt2"])
         self.card_romaja.configure(text="")
         self.card_answer.configure(text="")
         self.session_info.configure(text=f"{len(self._queue)} carte(s) en file")
@@ -111,7 +123,6 @@ class CoreenTab(ctk.CTkScrollableFrame):
     def _reveal(self):
         if not self._current:
             return
-        self._revealed = True
         c = self._current
         self.card_romaja.configure(text=c.get("romaja", ""))
         ans = c.get("fr", "")
@@ -147,14 +158,15 @@ class CoreenTab(ctk.CTkScrollableFrame):
     def _render_deck(self):
         for w in self.deck_list.winfo_children():
             w.destroy()
-        cards = self.deck.cards()
-        for i, c in enumerate(cards):
+        for i, c in enumerate(self.deck.cards()):
             row = ctk.CTkFrame(self.deck_list, fg_color="transparent")
             row.pack(fill="x", pady=1)
-            txt = f"{c.get('kr', '')}  ·  {c.get('fr', '')}"
-            ctk.CTkLabel(row, text=txt, anchor="w").pack(
+            ctk.CTkLabel(row, text=f"{c.get('kr', '')}   {c.get('fr', '')}",
+                         anchor="w", font=theme.font("body", 12),
+                         text_color=C["text_norm"]).pack(
                 side="left", fill="x", expand=True)
-            ctk.CTkButton(row, text="✕", width=26, fg_color="#7a3b3b",
+            ctk.CTkButton(row, text="✕", width=26, fg_color="#5a2740",
+                          hover_color="#7a3b3b",
                           command=lambda i=i: self._del_card(i)).pack(side="left")
 
     def _del_card(self, i):
@@ -164,30 +176,27 @@ class CoreenTab(ctk.CTkScrollableFrame):
     # ---- import / export ----
     def _export(self, kind):
         ext = "csv" if kind == "csv" else "json"
-        path = filedialog.asksaveasfilename(
-            defaultextension=f".{ext}",
-            filetypes=[(ext.upper(), f"*.{ext}")])
+        path = filedialog.asksaveasfilename(defaultextension=f".{ext}",
+                                            filetypes=[(ext.upper(), f"*.{ext}")])
         if not path:
             return
         try:
-            data = (self.deck.export_csv() if kind == "csv"
-                    else self.deck.export_json())
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(data)
+            data = self.deck.export_csv() if kind == "csv" else self.deck.export_json()
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(data)
         except Exception as e:
             messagebox.showerror("Export", str(e))
 
     def _import(self, kind):
         ext = "csv" if kind == "csv" else "json"
-        path = filedialog.askopenfilename(
-            filetypes=[(ext.upper(), f"*.{ext}")])
+        path = filedialog.askopenfilename(filetypes=[(ext.upper(), f"*.{ext}")])
         if not path:
             return
-        replace = messagebox.askyesno(
-            "Import", "Remplacer le deck existant ?\n(Non = ajouter)")
+        replace = messagebox.askyesno("Import",
+                                      "Remplacer le deck existant ?\n(Non = ajouter)")
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                text = f.read()
+            with open(path, "r", encoding="utf-8") as fh:
+                text = fh.read()
             if kind == "csv":
                 self.deck.import_csv(text, replace=replace)
             else:
@@ -197,4 +206,4 @@ class CoreenTab(ctk.CTkScrollableFrame):
         self._render_deck()
 
     def refresh(self, snap):
-        pass  # rien de périodique ici
+        pass

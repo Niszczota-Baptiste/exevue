@@ -15,115 +15,122 @@ except Exception:
     Image = None
 
 from ..backend import media
+from . import theme
+from .base import ThemedScroll
+from .theme import C
 from .widgets import Indicator
 
 
-class SystemeTab(ctk.CTkScrollableFrame):
+class SystemeTab(ThemedScroll):
     def __init__(self, master, app):
-        super().__init__(master, fg_color="transparent")
-        self.app = app
-        self.cfg = app.config_store
-        self._last_site_state = None
+        super().__init__(master, app)
         self._art_sig = None
         self._art_image = None
         self._build()
 
-    def _section(self, title):
-        ctk.CTkLabel(self, text=title, font=("", 13, "bold"),
-                     anchor="w").pack(fill="x", padx=4, pady=(10, 2))
-        frame = ctk.CTkFrame(self)
-        frame.pack(fill="x", padx=4, pady=2)
-        return frame
-
     def _build(self):
         # --- santé site ---
         f = self._section("Santé du site")
-        self.site_ind = Indicator(f, text="baptiste-niszczota.com : …")
-        self.site_ind.pack(fill="x", padx=8, pady=(8, 2))
-        self.site_detail = ctk.CTkLabel(f, text="", anchor="w", text_color="#888")
-        self.site_detail.pack(fill="x", padx=8, pady=(0, 4))
+        self.site_ind = Indicator(f, text="baptiste-niszczota.com")
+        self.site_ind.set("grey", "baptiste-niszczota.com")
+        self.site_ind.pack(fill="x", pady=(0, 2))
+        self.site_detail = ctk.CTkLabel(f, text="", anchor="w", text_color=C["dim"],
+                                        font=theme.font("mono", 11))
+        self.site_detail.pack(fill="x", padx=(25, 0), pady=(0, 6))
         row = ctk.CTkFrame(f, fg_color="transparent")
-        row.pack(fill="x", padx=8, pady=(0, 8))
-        self.site_url = ctk.CTkEntry(row)
+        row.pack(fill="x")
+        self.site_url = ctk.CTkEntry(row, font=theme.font("body", 12))
         self.site_url.insert(0, self.cfg.get("site_health_url", ""))
         self.site_url.pack(side="left", fill="x", expand=True, padx=(0, 4))
-        ctk.CTkButton(row, text="OK", width=40,
-                      command=self._save_site).pack(side="left")
+        ctk.CTkButton(row, text="OK", width=42, command=self._save_site,
+                      fg_color=C["accent"], hover_color=C["accent_dk"],
+                      text_color="#f6f2ff", border_width=0,
+                      font=theme.font("head", 11, "bold")).pack(side="left")
 
-        # --- média SMTC ---
+        # --- média ---
         f = self._section("Média en cours")
         body = ctk.CTkFrame(f, fg_color="transparent")
-        body.pack(fill="x", padx=8, pady=8)
-        self.art_label = ctk.CTkLabel(body, text="♪", width=64, height=64,
-                                      fg_color="#2a2a2a", corner_radius=6)
-        self.art_label.pack(side="left", padx=(0, 8))
+        body.pack(fill="x", pady=(0, 8))
+        self.art_label = ctk.CTkLabel(body, text="♪", width=66, height=66,
+                                      fg_color=C["inset"], corner_radius=8,
+                                      font=theme.font("body", 22),
+                                      text_color=C["accent_lt"])
+        self.art_label.pack(side="left", padx=(0, 10))
         txt = ctk.CTkFrame(body, fg_color="transparent")
         txt.pack(side="left", fill="x", expand=True)
-        self.media_title = ctk.CTkLabel(txt, text="—", font=("", 13, "bold"),
-                                        anchor="w", wraplength=260, justify="left")
+        self.media_title = ctk.CTkLabel(txt, text="—", font=theme.font("body", 13, "bold"),
+                                        anchor="w", wraplength=240, justify="left",
+                                        text_color=C["text"])
         self.media_title.pack(fill="x")
-        self.media_artist = ctk.CTkLabel(txt, text="", anchor="w",
-                                         text_color="#888", wraplength=260,
-                                         justify="left")
+        self.media_artist = ctk.CTkLabel(txt, text="", anchor="w", text_color=C["muted"],
+                                         wraplength=240, justify="left",
+                                         font=theme.font("body", 12))
         self.media_artist.pack(fill="x")
         ctrl = ctk.CTkFrame(f, fg_color="transparent")
-        ctrl.pack(fill="x", padx=8, pady=(0, 8))
-        ctk.CTkButton(ctrl, text="⏮", width=60,
-                      command=lambda: media.control("prev")).pack(side="left", expand=True, fill="x", padx=2)
-        ctk.CTkButton(ctrl, text="⏯", width=60,
-                      command=lambda: media.control("playpause")).pack(side="left", expand=True, fill="x", padx=2)
-        ctk.CTkButton(ctrl, text="⏭", width=60,
-                      command=lambda: media.control("next")).pack(side="left", expand=True, fill="x", padx=2)
+        ctrl.pack(fill="x")
+        for sym, act in (("⏮", "prev"), ("⏯", "playpause"), ("⏭", "next")):
+            ctk.CTkButton(ctrl, text=sym, font=theme.font("body", 15),
+                          command=lambda a=act: media.control(a)).pack(
+                side="left", expand=True, fill="x", padx=2)
         if not media.available():
-            ctk.CTkLabel(f, text="(SMTC indisponible sur cette plateforme)",
-                         text_color="#888").pack(fill="x", padx=8, pady=(0, 8))
+            ctk.CTkLabel(f, text="SMTC indisponible sur cette plateforme",
+                         text_color=C["dim"], font=theme.font("body", 11)).pack(
+                fill="x", pady=(6, 0))
 
-        # --- horloge Séoul ---
+        # --- horloges ---
         f = self._section("Horloges")
-        self.clock_big = ctk.CTkLabel(f, text="", font=("", 14), justify="left",
-                                      anchor="w")
-        self.clock_big.pack(fill="x", padx=8, pady=8)
+        self.clock_local = self._clock_box(f, "LOCAL", C["dim"])
+        self.clock_seoul = self._clock_box(f, "SÉOUL", C["accent_lt"])
         self._tick_clock()
+
+    def _clock_box(self, parent, caption, cap_color):
+        box = ctk.CTkFrame(parent, fg_color=C["inset"], corner_radius=8,
+                           border_color=C["inset_border"], border_width=1)
+        box.pack(fill="x", pady=3)
+        ctk.CTkLabel(box, text=caption, font=theme.font("head", 9, "bold"),
+                     text_color=cap_color).pack(side="left", padx=(12, 0), pady=8)
+        val = ctk.CTkLabel(box, text="--:--:--", font=theme.font("mono", 16),
+                           text_color=C["text"])
+        val.pack(side="right", padx=12)
+        return val
 
     def _save_site(self):
         self.cfg.set("site_health_url", self.site_url.get().strip())
 
     def _tick_clock(self):
-        local = datetime.now()
-        line = f"Local : {local.strftime('%H:%M:%S  —  %a %d %b')}"
+        self.clock_local.configure(
+            text=datetime.now().strftime("%H:%M:%S  ·  %a %d %b"))
         if ZoneInfo is not None:
             try:
-                seoul = datetime.now(ZoneInfo("Asia/Seoul"))
-                line += f"\nSéoul : {seoul.strftime('%H:%M:%S  —  %a %d %b')}"
+                self.clock_seoul.configure(
+                    text=datetime.now(ZoneInfo("Asia/Seoul")).strftime(
+                        "%H:%M:%S  ·  %a %d %b"))
             except Exception:
                 pass
-        self.clock_big.configure(text=line)
         self.after(1000, self._tick_clock)
 
     def refresh(self, snap):
         site = snap.get("site")
         if site is None:
-            self.site_ind.set("grey", "Site : (URL non configurée)")
+            self.site_ind.set("grey", "site : URL non configurée")
             self.site_detail.configure(text="")
         elif site.get("up"):
             ms = site.get("ms")
-            self.site_ind.set("green", "Site : en ligne")
+            self.site_ind.set("green", "site : en ligne")
             self.site_detail.configure(
                 text=f"HTTP {site.get('status')} · {ms:.0f} ms" if ms else "")
-            self._last_site_state = "up"
         else:
-            self.site_ind.set("red", "Site : hors ligne")
+            self.site_ind.set("red", "site : hors ligne")
             self.site_detail.configure(text=f"statut {site.get('status')}")
-            self._last_site_state = "down"
 
         med = snap.get("media")
         if not med or not med.get("title"):
-            self.media_title.configure(text="— (rien en lecture)")
+            self.media_title.configure(text="— rien en lecture")
             self.media_artist.configure(text="")
             self._set_art(None)
         else:
             mark = "▶" if med.get("playing") else "⏸"
-            self.media_title.configure(text=f"{mark} {med['title']}")
+            self.media_title.configure(text=f"{mark}  {med['title']}")
             self.media_artist.configure(
                 text=" — ".join(x for x in (med.get("artist"),
                                             med.get("album")) if x))
@@ -141,7 +148,7 @@ class SystemeTab(ctk.CTkScrollableFrame):
         try:
             img = Image.open(io.BytesIO(data)).convert("RGB")
             self._art_image = ctk.CTkImage(light_image=img, dark_image=img,
-                                           size=(64, 64))
+                                           size=(66, 66))
             self.art_label.configure(image=self._art_image, text="")
         except Exception:
             self.art_label.configure(image=None, text="♪")

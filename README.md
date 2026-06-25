@@ -21,9 +21,15 @@ reprise et refactorée dans le paquet `mfcockpit/`.
   *snapshot* thread-safe ; l'UI ne fait **jamais** de réseau, elle lit juste le
   snapshot via une boucle `after()`. CPU ~0 entre deux ticks, erreurs réseau
   silencieuses.
-- **`mfcockpit/ui/`** — fenêtre customtkinter (sombre), redimensionnable,
-  « toujours au-dessus » optionnel, organisée en onglets `CTkTabview` :
-  **[MF] [Temps] [Outils] [Coréen] [Système]**.
+- **`mfcockpit/ui/`** — fenêtre customtkinter (sombre, look « cockpit » violet),
+  redimensionnable, « toujours au-dessus » optionnel. Navigation par **sidebar**
+  verticale (icônes + état actif) vers les vues **MF · Temps · Outils · Coréen ·
+  Système**, titlebar avec horloges locale/Séoul, cartes à en-têtes losange,
+  voyants à halo et graphes maison. Le thème global est piloté par
+  `ui/theme_purple.json` (rechargé au démarrage) ; les polices visent
+  Rajdhani / JetBrains Mono / Outfit et **retombent proprement** sur les polices
+  système si elles ne sont pas installées (aucun fichier à embarquer).
+  Pour respecter la perf, **seul l'onglet visible est rafraîchi** à chaque tick.
 
 ## Installation & lancement
 

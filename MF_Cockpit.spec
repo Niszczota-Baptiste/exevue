@@ -27,6 +27,9 @@ try:
 except Exception:
     pass
 
+# Thème violet chargé au runtime (os.path.join(__file__, ...)).
+datas += [("mfcockpit/ui/theme_purple.json", "mfcockpit/ui")]
+
 block_cipher = None
 
 a = Analysis(
