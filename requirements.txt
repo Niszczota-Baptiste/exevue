@@ -5,6 +5,6 @@ customtkinter>=5.2
 pyperclip>=1.8
 # Windows uniquement (best-effort, l'app dégrade proprement sans) :
 winotify>=1.1 ; sys_platform == "win32"
-winsdk>=1.0 ; sys_platform == "win32"
+winsdk>=1.0.0b10 ; sys_platform == "win32"
 # Empaquetage :
 pyinstaller>=6.0
