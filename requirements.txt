@@ -3,6 +3,8 @@ psutil>=5.9
 mcstatus>=11.0
 customtkinter>=5.2
 pyperclip>=1.8
+# Base de fuseaux horaires (Windows n'en a pas -> horloge Séoul) :
+tzdata>=2024.1
 # Windows uniquement (best-effort, l'app dégrade proprement sans) :
 winotify>=1.1 ; sys_platform == "win32"
 winsdk>=1.0.0b10 ; sys_platform == "win32"

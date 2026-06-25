@@ -11,11 +11,17 @@ from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 hidden = []
 datas = []
 
-for pkg in ("mcstatus", "dns", "winotify", "winsdk", "winrt"):
+for pkg in ("mcstatus", "dns", "winotify", "winsdk", "winrt", "tzdata"):
     try:
         hidden += collect_submodules(pkg)
     except Exception:
         pass
+
+# tzdata est un paquet de données pures (fuseaux horaires) -> embarquer ses .zi.
+try:
+    datas += collect_data_files("tzdata")
+except Exception:
+    pass
 
 # customtkinter embarque des fichiers de thème/police à copier.
 try:

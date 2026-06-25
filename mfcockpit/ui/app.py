@@ -25,13 +25,14 @@ from .theme import C
 from .tab_coreen import CoreenTab
 from .tab_mf import MFTab
 from .tab_outils import OutilsTab
+from .tab_perso import PersoTab
 from .tab_systeme import SystemeTab
 from .tab_temps import TempsTab
 
 theme.apply_theme()
 
 NAV = [
-    ("MF", "mf"), ("Temps", "temps"), ("Outils", "outils"),
+    ("Perso", "perso"), ("MF", "mf"), ("Temps", "temps"), ("Outils", "outils"),
     ("Coréen", "coreen"), ("Système", "systeme"),
 ]
 
@@ -39,7 +40,10 @@ NAV = [
 def _draw_icon(cv, key, color):
     cv.delete("all")
     o = {"width": 2, "fill": color, "capstyle": "round", "joinstyle": "round"}
-    if key == "mf":
+    if key == "perso":
+        for dx, dy in ((2, 2), (10, 2), (2, 10), (10, 10)):
+            cv.create_rectangle(dx, dy, dx + 6, dy + 6, outline=color, width=2)
+    elif key == "mf":
         cv.create_line(2, 11, 6, 7, 9, 10, 13, 5, 16, 8, **o)
         cv.create_line(2, 15, 16, 15, fill=color, width=2, capstyle="round")
     elif key == "temps":
@@ -76,7 +80,7 @@ class App(ctk.CTk):
         self.poller = Poller(self.config_store, self.tracker, self.clipboard)
         notify.set_banner_callback(self.show_banner)
 
-        self._active = "mf"
+        self._active = "perso"
         self._nav = {}
 
         self._build_titlebar()
@@ -170,13 +174,14 @@ class App(ctk.CTk):
                           pady=8)
 
         self.tabs = {
+            "perso": PersoTab(self.content, self),
             "mf": MFTab(self.content, self),
             "temps": TempsTab(self.content, self),
             "outils": OutilsTab(self.content, self),
             "coreen": CoreenTab(self.content, self),
             "systeme": SystemeTab(self.content, self),
         }
-        self._show_tab("mf")
+        self._show_tab("perso")
 
     def _build_sidebar(self, parent):
         side = ctk.CTkFrame(parent, fg_color=C["sidebar"], corner_radius=0,

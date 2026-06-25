@@ -40,6 +40,19 @@ class MFTab(ThemedScroll):
         self.mf_players = self._detail_row(f)
         self.dc_val = self._presence_row(f, "blue", "Discord")
         self.dc_voice = self._detail_row(f)
+        # config guild id (widget public à activer côté serveur Discord)
+        drow = ctk.CTkFrame(f, fg_color="transparent")
+        drow.pack(fill="x", pady=(8, 0))
+        ctk.CTkLabel(drow, text="Guild id", font=theme.font("head", 10, "bold"),
+                     text_color=C["muted"]).pack(side="left")
+        self.guild_entry = ctk.CTkEntry(drow, font=theme.font("mono", 12),
+                                        placeholder_text="ID du serveur Discord")
+        self.guild_entry.insert(0, str(self.cfg.get("discord_guild_id", "")))
+        self.guild_entry.pack(side="left", fill="x", expand=True, padx=6)
+        ctk.CTkButton(drow, text="OK", width=42, command=self._save_guild,
+                      fg_color=C["accent"], hover_color=C["accent_dk"],
+                      text_color="#f6f2ff", border_width=0,
+                      font=theme.font("head", 11, "bold")).pack(side="left")
 
         # 2) Latence
         f = self._section("Latence Minefield")
@@ -126,6 +139,9 @@ class MFTab(ThemedScroll):
             ).grid(row=i // 2, column=i % 2, padx=(0 if i % 2 == 0 else 8, 0),
                    pady=4, sticky="ew")
         self.links_frame.grid_columnconfigure((0, 1), weight=1, uniform="lnk")
+
+    def _save_guild(self):
+        self.cfg.set("discord_guild_id", self.guild_entry.get().strip())
 
     def _save_alert(self):
         self.cfg.set("player_alert.enabled", bool(self.alert_var.get()))

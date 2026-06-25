@@ -21,14 +21,40 @@ def fmt(seconds) -> str:
     return str(timedelta(seconds=int(max(0, seconds))))
 
 
-def resolve_server_ips(host: str):
-    ips = set()
+def resolve_server_endpoints(host: str, default_port: int = 25565):
+    """IPs + ports du serveur, en tenant compte de l'enregistrement SRV.
+
+    Un client Minecraft résout `_minecraft._tcp.<host>` (SRV) : la cible a
+    souvent une IP/un port différents de `host:25565`. On agrège tout pour
+    reconnaître la connexion multi quel que soit le routage.
+    """
+    ips, ports = set(), {int(default_port)}
+    hosts = {host}
+
+    # SRV (best-effort, via dnspython fourni par mcstatus)
     try:
-        _, _, addrs = socket.gethostbyname_ex(host)
-        ips.update(addrs)
+        import dns.resolver  # type: ignore
+        ans = dns.resolver.resolve(f"_minecraft._tcp.{host}", "SRV")
+        for r in ans:
+            target = str(r.target).rstrip(".")
+            if target:
+                hosts.add(target)
+            ports.add(int(r.port))
     except Exception:
         pass
-    return ips
+
+    for h in hosts:
+        try:
+            _, _, addrs = socket.gethostbyname_ex(h)
+            ips.update(addrs)
+        except Exception:
+            pass
+    return ips, ports
+
+
+def resolve_server_ips(host: str):
+    """Compat : ne renvoie que les IPs (ancienne signature)."""
+    return resolve_server_endpoints(host)[0]
 
 
 def find_mc_process():
@@ -51,15 +77,31 @@ def find_mc_process():
     return None
 
 
-def current_mode(proc, server_ips, server_port: int) -> str:
-    """multi si une connexion établie vers le serveur, sinon solo."""
+def _proc_connections(proc):
+    """Connexions du process, avec repli sur un scan système si refusé."""
     try:
-        for c in proc.net_connections(kind="inet"):
-            if c.status == psutil.CONN_ESTABLISHED and c.raddr:
-                if c.raddr.ip in server_ips or c.raddr.port == server_port:
-                    return "multi"
+        return proc.net_connections(kind="inet")
     except Exception:
         pass
+    # Repli : certains environnements refusent net_connections() par process.
+    try:
+        return [c for c in psutil.net_connections(kind="inet")
+                if c.pid == proc.pid]
+    except Exception:
+        return []
+
+
+def current_mode(proc, server_ips, server_ports) -> str:
+    """multi si une connexion établie vers le serveur (IP ou port SRV)."""
+    if isinstance(server_ports, int):
+        server_ports = {server_ports}
+    for c in _proc_connections(proc):
+        try:
+            if c.status == psutil.CONN_ESTABLISHED and c.raddr:
+                if c.raddr.ip in server_ips or c.raddr.port in server_ports:
+                    return "multi"
+        except Exception:
+            continue
     return "solo"
 
 
@@ -68,6 +110,7 @@ class Tracker:
         self.config = config
         self._state = self._load()
         self._server_ips = set()
+        self._server_ports = {25565}
         self._ips_resolved_at = 0.0
         # session courante (depuis lancement de l'app)
         self.session = {"solo": 0.0, "multi": 0.0}
@@ -100,13 +143,14 @@ class Tracker:
             pass
 
     # ---- cycle ----
-    def _server_ips_cached(self):
+    def _server_endpoints_cached(self):
         host = self.config.get("server.host", "minefield.fr")
+        port = int(self.config.get("server.port", 25565))
         now = time.time()
         if now - self._ips_resolved_at > 300 or not self._server_ips:
-            self._server_ips = resolve_server_ips(host)
+            self._server_ips, self._server_ports = resolve_server_endpoints(host, port)
             self._ips_resolved_at = now
-        return self._server_ips
+        return self._server_ips, self._server_ports
 
     def tick(self, elapsed: float):
         """Attribue `elapsed` secondes au mode courant si le jeu tourne."""
@@ -116,8 +160,8 @@ class Tracker:
             self.mode = None
             self.continuous_seconds = 0.0
         else:
-            port = int(self.config.get("server.port", 25565))
-            mode = current_mode(proc, self._server_ips_cached(), port)
+            ips, ports = self._server_endpoints_cached()
+            mode = current_mode(proc, ips, ports)
             self.playing = True
             self.mode = mode
             self.continuous_seconds += elapsed
