@@ -90,6 +90,8 @@ class TempsTab(ThemedScroll):
         if t.playing:
             self.k_state.configure(text=f"EN COURS · {(t.mode or '').upper()}",
                                    text_color=C["green"])
+        elif t.mode == "menu":
+            self.k_state.configure(text="menu (non compté)", text_color=C["orange"])
         else:
             self.k_state.configure(text="à l'arrêt", text_color=C["dim"])
         self.k_sess.configure(

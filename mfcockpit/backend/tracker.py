@@ -91,18 +91,95 @@ def _proc_connections(proc):
         return []
 
 
-def current_mode(proc, server_ips, server_ports) -> str:
-    """multi si une connexion établie vers le serveur (IP ou port SRV)."""
+_WEB_PORTS = {80, 443, 8080, 8443, 53}
+
+
+def _is_public_ip(ip: str) -> bool:
+    """Vrai si l'IP est publique (ni loopback, ni LAN, ni link-local)."""
+    if ":" in ip:  # IPv6
+        low = ip.lower()
+        return not (low == "::1" or low.startswith("fe80")
+                    or low.startswith("fc") or low.startswith("fd"))
+    parts = ip.split(".")
+    if len(parts) != 4:
+        return False
+    try:
+        a, b = int(parts[0]), int(parts[1])
+    except ValueError:
+        return False
+    if a in (0, 10, 127):
+        return False
+    if a == 172 and 16 <= b <= 31:
+        return False
+    if a == 192 and b == 168:
+        return False
+    if a == 169 and b == 254:
+        return False
+    if a >= 224:  # multicast / réservé
+        return False
+    return True
+
+
+def network_connected(proc, server_ips, server_ports) -> bool:
+    """Vrai si le process a une connexion établie vers un serveur de jeu.
+
+    Match direct (IP/port résolus via SRV) OU heuristique : toute connexion
+    établie vers une IP publique sur un port non-web (= un serveur Minecraft,
+    pas de l'auth/télémétrie HTTPS). Fiable que le routage soit standard ou non.
+    """
     if isinstance(server_ports, int):
         server_ports = {server_ports}
     for c in _proc_connections(proc):
         try:
-            if c.status == psutil.CONN_ESTABLISHED and c.raddr:
-                if c.raddr.ip in server_ips or c.raddr.port in server_ports:
-                    return "multi"
+            if c.status != psutil.CONN_ESTABLISHED or not c.raddr:
+                continue
+            ip, port = c.raddr.ip, c.raddr.port
+            if ip in server_ips or port in server_ports:
+                return True
+            if _is_public_ip(ip) and port not in _WEB_PORTS:
+                return True
         except Exception:
             continue
-    return "solo"
+    return False
+
+
+def current_mode(proc, server_ips, server_ports) -> str:
+    """Compat (tests) : multi si connexion serveur, sinon solo."""
+    return "multi" if network_connected(proc, server_ips, server_ports) else "solo"
+
+
+def gamedir_from_proc(proc):
+    """Dossier de jeu (`--gameDir`) lu depuis la ligne de commande du client."""
+    try:
+        cmd = proc.cmdline()
+    except Exception:
+        return None
+    for i, tok in enumerate(cmd):
+        if tok == "--gameDir" and i + 1 < len(cmd):
+            return cmd[i + 1]
+        if tok.startswith("--gameDir="):
+            return tok.split("=", 1)[1]
+    # repli : un token contenant ".minefield" -> remonte au dossier
+    for tok in cmd:
+        if ".minefield" in tok.lower():
+            p = tok
+            while p and os.path.basename(p):
+                if os.path.basename(p).lower().startswith(".minefield"):
+                    return p
+                p = os.path.dirname(p)
+    return None
+
+
+def _log_event(line: str):
+    """Événement de session déduit d'une ligne de log : multi/solo/menu/None."""
+    if "Connecting to " in line:
+        return "multi"
+    if "Starting integrated minecraft server" in line:
+        return "solo"
+    if ("Stopping singleplayer server" in line
+            or "Stopping server" in line):
+        return "menu"
+    return None
 
 
 class Tracker:
@@ -115,10 +192,14 @@ class Tracker:
         # session courante (depuis lancement de l'app)
         self.session = {"solo": 0.0, "multi": 0.0}
         self.playing = False
-        self.mode = None  # "solo" | "multi" | None
+        self.mode = None  # "solo" | "multi" | "menu" | None
         # durée de jeu continue (pour le rappel pause)
         self.continuous_seconds = 0.0
         self._last_save = 0.0
+        # suivi du log client (latest.log) pour distinguer monde solo / menu
+        self._log_path = None
+        self._log_pos = 0
+        self._log_state = None  # 'solo' | 'multi' | 'menu' | None (illisible)
 
     # ---- persistance ----
     def _load(self) -> dict:
@@ -152,24 +233,93 @@ class Tracker:
             self._ips_resolved_at = now
         return self._server_ips, self._server_ports
 
+    # ---- suivi du log client ----
+    def _seed_log_state(self, path):
+        """État courant déduit de la fin du log (par défaut 'menu')."""
+        state = "menu"
+        try:
+            with open(path, "rb") as f:
+                f.seek(0, os.SEEK_END)
+                size = f.tell()
+                f.seek(max(0, size - 2_000_000))  # ~derniers 2 Mo
+                chunk = f.read()
+            for line in chunk.decode("utf-8", "replace").splitlines():
+                ev = _log_event(line)
+                if ev:
+                    state = ev
+        except Exception:
+            return None
+        return state
+
+    def _update_log_state(self, proc):
+        gamedir = gamedir_from_proc(proc)
+        if not gamedir:
+            self._log_path = None
+            self._log_state = None
+            return
+        path = os.path.join(gamedir, "logs", "latest.log")
+        try:
+            size = os.path.getsize(path)
+        except Exception:
+            self._log_path = path
+            self._log_state = None
+            return
+        if path != self._log_path:  # nouveau client -> on (re)cale sur la fin
+            self._log_path = path
+            self._log_state = self._seed_log_state(path)
+            self._log_pos = size
+            return
+        if size < self._log_pos:  # rotation / relance
+            self._log_pos = 0
+            self._log_state = "menu"
+        try:
+            with open(path, "rb") as f:
+                f.seek(self._log_pos)
+                chunk = f.read()
+                self._log_pos = f.tell()
+            for line in chunk.decode("utf-8", "replace").splitlines():
+                ev = _log_event(line)
+                if ev:
+                    self._log_state = ev
+        except Exception:
+            pass
+
+    def _resolve_mode(self, proc):
+        """menu / solo / multi à partir du réseau (multi) + du log (solo/menu)."""
+        self._update_log_state(proc)
+        ips, ports = self._server_endpoints_cached()
+        if network_connected(proc, ips, ports):
+            return "multi"
+        if self._log_state == "solo":
+            return "solo"
+        if self._log_state is None:
+            return "solo"  # logs illisibles -> repli (process ouvert = on compte)
+        return "menu"      # 'menu' ou 'multi' obsolète (déconnecté)
+
     def tick(self, elapsed: float):
-        """Attribue `elapsed` secondes au mode courant si le jeu tourne."""
+        """Attribue `elapsed` au mode courant ; ne compte ni menu ni arrêt."""
         proc = find_mc_process()
         if proc is None:
             self.playing = False
             self.mode = None
             self.continuous_seconds = 0.0
+            self._log_path = None
+            self._log_state = None
         else:
-            ips, ports = self._server_endpoints_cached()
-            mode = current_mode(proc, ips, ports)
-            self.playing = True
+            mode = self._resolve_mode(proc)
             self.mode = mode
-            self.continuous_seconds += elapsed
-            self.session[mode] += elapsed
-            self._state[f"{mode}_seconds"] += elapsed
-            day = date.today().isoformat()
-            d = self._state["days"].setdefault(day, {"solo": 0.0, "multi": 0.0})
-            d[mode] += elapsed
+            if mode in ("solo", "multi"):
+                self.playing = True
+                self.continuous_seconds += elapsed
+                self.session[mode] += elapsed
+                self._state[f"{mode}_seconds"] += elapsed
+                day = date.today().isoformat()
+                d = self._state["days"].setdefault(
+                    day, {"solo": 0.0, "multi": 0.0})
+                d[mode] += elapsed
+            else:  # menu : ouvert mais pas en jeu
+                self.playing = False
+                self.continuous_seconds = 0.0
 
         self._prune_days()
         now = time.time()

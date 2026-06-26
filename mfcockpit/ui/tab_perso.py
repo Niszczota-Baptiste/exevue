@@ -189,6 +189,9 @@ class PersoTab(ThemedScroll):
             if t.playing:
                 self._t_state.configure(text=f"EN COURS · {(t.mode or '').upper()}",
                                         text_color=C["green"])
+            elif t.mode == "menu":
+                self._t_state.configure(text="menu (non compté)",
+                                        text_color=C["orange"])
             else:
                 self._t_state.configure(text="à l'arrêt", text_color=C["dim"])
             solo_d, multi_d = t.today()
