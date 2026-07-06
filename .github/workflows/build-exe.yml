@@ -9,12 +9,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "mf_cockpit.py"
-      - "mfcockpit/**"
-      - "MF_Cockpit.spec"
-      - "requirements.txt"
-      - ".github/workflows/build-exe.yml"
   workflow_dispatch: {}
 
 permissions:
