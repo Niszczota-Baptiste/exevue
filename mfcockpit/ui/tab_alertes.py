@@ -23,6 +23,29 @@ _OCC_LABELS = {
     "mensuelle": "Mensuelles",
 }
 
+_ROLE_LABELS = {"recuperation": "récupération", "rendu": "rendu",
+                "pnj": "PNJ", "autre": ""}
+
+
+def _fmt_item(it):
+    """Un input/reward du feed -> texte court ('3× Blé', '50 PA', '+10 Bourg')."""
+    kind = it.get("kind")
+    label = it.get("label") or it.get("refCode") or ""
+    q = it.get("quantite")
+    if kind == "pa":
+        return f"{q or '?'} PA"
+    if kind == "reputation":
+        base = label or "réput."
+        return f"+{q} {base}" if q else base
+    if kind == "deblocage":
+        return f"débloque {label}" if label else "déblocage"
+    label = label or kind or "?"
+    return f"{q}× {label}" if q else str(label)
+
+
+def _fmt_items(items):
+    return ", ".join(_fmt_item(it) for it in items or [])
+
 
 def _fmt_delay(seconds):
     """Durée relative compacte : 'dans 3 h', 'dans 45 min', 'dépassée'."""
@@ -122,9 +145,50 @@ class AlertesTab(ThemedScroll):
             ctk.CTkLabel(row, text=right, font=theme.font("mono", 11),
                          text_color=C["muted"]).pack(side="right")
         if detail:
-            ctk.CTkLabel(parent, text=detail, anchor="w", justify="left",
-                         font=theme.font("body", 11), text_color=C["dim"],
-                         wraplength=300).pack(fill="x", padx=(25, 0))
+            self._detail_line(parent, detail)
+
+    def _detail_line(self, parent, text, color=None):
+        ctk.CTkLabel(parent, text=text, anchor="w", justify="left",
+                     font=theme.font("body", 11),
+                     text_color=color or C["dim"],
+                     wraplength=300).pack(fill="x", padx=(25, 0))
+
+    def _coord_line(self, parent, point):
+        """Ligne 📍 x y z cliquable : copie les coordonnées (à coller en jeu)."""
+        coords = f"{point.get('x', 0)} {point.get('y', 0)} {point.get('z', 0)}"
+        extra = " · ".join(x for x in (
+            str(point.get("label") or ""),
+            _ROLE_LABELS.get(point.get("role"), str(point.get("role") or "")),
+        ) if x)
+        text = f"📍 {coords}" + (f"  ({extra})" if extra else "")
+        lbl = ctk.CTkLabel(parent, text=text, anchor="w", cursor="hand2",
+                           font=theme.font("mono", 11),
+                           text_color=C["accent_lt2"])
+        lbl.pack(fill="x", padx=(25, 0))
+
+        def copy(_e, value=coords, widget=lbl, original=text):
+            try:
+                widget.clipboard_clear()
+                widget.clipboard_append(value)
+            except Exception:
+                return
+            widget.configure(text=f"📍 {value}  — copié !",
+                             text_color=C["green"])
+            widget.after(1200, lambda: widget.configure(
+                text=original, text_color=C["accent_lt2"]))
+
+        lbl.bind("<Button-1>", copy)
+
+    def _quest_extras(self, parent, q):
+        """Détails optionnels d'une quête : items requis, récompenses, points."""
+        inputs = _fmt_items(q.get("inputs"))
+        if inputs:
+            self._detail_line(parent, f"📦 {inputs}")
+        rewards = _fmt_items(q.get("rewards"))
+        if rewards:
+            self._detail_line(parent, f"🎁 {rewards}")
+        for pt in q.get("mapPoints") or []:
+            self._coord_line(parent, pt)
 
     def _render_feed(self, feed):
         now = time.time()
@@ -138,6 +202,7 @@ class AlertesTab(ThemedScroll):
                            "red" if left < 24 * 3600 else "orange",
                            str(q.get("titre", "?")), _fmt_delay(left),
                            str(q.get("faction") or ""))
+            self._quest_extras(self.due_frame, q)
         if not deadlines:
             self._placeholder(self.due_frame, "aucune échéance proche")
 
@@ -160,6 +225,7 @@ class AlertesTab(ThemedScroll):
                     self.avail_frame, "accent", str(q.get("titre", "?")),
                     f"reset {_fmt_delay(reset_at - now)}" if reset_at else "",
                     str(q.get("faction") or ""))
+                self._quest_extras(self.avail_frame, q)
         if not total:
             msg = ("tout est fait, bravo !"
                    if feed.get("remindersEnabled", True)
@@ -187,6 +253,8 @@ class AlertesTab(ThemedScroll):
                 self._item_row(self.wanted_frame, color,
                                str(w.get("name", "?")),
                                f"×{qty}" if qty > 1 else "", detail)
+                if any(w.get(k) is not None for k in ("x", "y", "z")):
+                    self._coord_line(self.wanted_frame, w)
 
     # ---- refresh (chaque seconde ; re-rendu seulement si feed changé) ----
     def refresh(self, snap):

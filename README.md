@@ -99,13 +99,17 @@ le widget est désactivé, l'onglet MF l'indique et continue sans planter.
   anti-spam) ; sparkline de fréquentation ; liens money/carto/panneaux.
 - **[Alertes]** — flux « cockpit » du site (`/api/quests/cockpit/<token>.json`,
   URL secrète à copier depuis le bouton « 🛰️ Cockpit MF » de `/quetes`) : quêtes
-  récurrentes non faites cette période (avec compte à rebours de reset),
-  quêtes à échéance sous 72 h, ressources « wanted » non récupérées (triées par
-  priorité, avec workspace et note). Poll toutes les 5 min (`quests_feed.poll_seconds`),
+  récurrentes non faites cette période (avec compte à rebours de reset) et
+  quêtes à échéance sous 72 h — chacune avec ses **items requis** (📦), ses
+  **récompenses** (🎁) et ses **coordonnées** (📍, un clic copie `x y z` à
+  coller en jeu) — plus la liste d'items perso « wanted » (priorité, projet,
+  note, coordonnées). Poll toutes les 5 min (`quests_feed.poll_seconds`),
   notification Windows groupée à chaque *nouveauté* (quête redevenue dispo
-  après un reset, nouvelle échéance, nouvelle ressource) — jamais au premier
-  relevé, désactivable (`quests_feed.notify`). Nécessite le feed étendu côté
-  site : voir `docs/titisite-cockpit-wanted.patch`.
+  après un reset, nouvelle échéance, nouvel item) — jamais au premier
+  relevé, désactivable (`quests_feed.notify`). Marche avec le feed actuel du
+  site (les champs absents sont juste omis) ; pour le feed enrichi + la page
+  admin qui pilote ce qui est envoyé, donner `docs/prompt-site-cockpit.md`
+  à Claude sur le repo du site.
 - **[Temps]** — session en cours (solo/multi), totaux, total du jour, moyenne/jour
   et ratio solo/multi sur 7 jours + graphe barres ; rappel pause configurable.
 - **[Outils]** — calculateur de stacks ; commandes modo éditables (copier /
