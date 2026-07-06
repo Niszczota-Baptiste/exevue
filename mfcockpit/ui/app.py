@@ -22,6 +22,7 @@ from ..backend.poller import Poller
 from ..backend.tracker import Tracker
 from . import theme
 from .theme import C
+from .tab_alertes import AlertesTab
 from .tab_coreen import CoreenTab
 from .tab_mf import MFTab
 from .tab_outils import OutilsTab
@@ -32,7 +33,8 @@ from .tab_temps import TempsTab
 theme.apply_theme()
 
 NAV = [
-    ("Perso", "perso"), ("MF", "mf"), ("Temps", "temps"), ("Outils", "outils"),
+    ("Perso", "perso"), ("MF", "mf"), ("Alertes", "alertes"),
+    ("Temps", "temps"), ("Outils", "outils"),
     ("Coréen", "coreen"), ("Système", "systeme"),
 ]
 
@@ -46,6 +48,13 @@ def _draw_icon(cv, key, color):
     elif key == "mf":
         cv.create_line(2, 11, 6, 7, 9, 10, 13, 5, 16, 8, **o)
         cv.create_line(2, 15, 16, 15, fill=color, width=2, capstyle="round")
+    elif key == "alertes":
+        # cloche
+        cv.create_arc(4, 3, 14, 13, start=0, extent=180, style="arc",
+                      outline=color, width=2)
+        cv.create_line(4, 8, 4, 12, 14, 12, 14, 8, **o)
+        cv.create_line(2, 12, 16, 12, fill=color, width=2, capstyle="round")
+        cv.create_oval(8, 14, 10, 16, fill=color, outline="")
     elif key == "temps":
         cv.create_oval(2, 2, 16, 16, outline=color, width=2)
         cv.create_line(9, 9, 9, 5, **o)
@@ -176,6 +185,7 @@ class App(ctk.CTk):
         self.tabs = {
             "perso": PersoTab(self.content, self),
             "mf": MFTab(self.content, self),
+            "alertes": AlertesTab(self.content, self),
             "temps": TempsTab(self.content, self),
             "outils": OutilsTab(self.content, self),
             "coreen": CoreenTab(self.content, self),

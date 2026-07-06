@@ -2,6 +2,8 @@
 
 - Ping serveur + latence, widget Discord, santé site, présences, média SMTC :
   toutes les `poll_seconds` (config).
+- Flux quêtes/wanted du site : cadence propre (`quests_feed.poll_seconds`,
+  défaut 5 min), gérée par `QuestFeedWatcher`.
 - Presse-papier : poll léger à chaque base-tick (1 s).
 - Publie un snapshot thread-safe ; l'UI ne fait que le lire (jamais de réseau).
 - CPU ~0 entre deux ticks (sommeil court), erreurs réseau silencieuses.
@@ -13,6 +15,7 @@ import time
 from collections import deque
 
 from . import discord, history, media, notify, server, site
+from .quests import QuestFeedWatcher
 
 
 class Poller:
@@ -33,6 +36,9 @@ class Poller:
         # état alerte joueurs + rappel pause
         self._player_zone = None      # "high" | "low" | "mid"
         self._break_notified = False
+
+        # flux quêtes/wanted du site (cadence propre, gérée par le watcher)
+        self._quest_feed = QuestFeedWatcher(config)
 
         self._last_heavy = 0.0
 
@@ -126,6 +132,12 @@ class Poller:
         # 5) média SMTC (async, exécuté ici)
         med = media.poll()
 
+        # 5bis) flux quêtes/wanted du site (ne refetch qu'à sa cadence)
+        try:
+            quests = self._quest_feed.tick()
+        except Exception:
+            quests = None
+
         # 6) histo fréquentation
         if srv:
             try:
@@ -140,7 +152,7 @@ class Poller:
 
         self._publish(
             server=srv, tcp_ms=tcp_ms, discord=dis, site=site_st, media=med,
-            latency=lat_stats, playing=self.tracker.playing,
+            quests=quests, latency=lat_stats, playing=self.tracker.playing,
             mode=self.tracker.mode,
         )
 
