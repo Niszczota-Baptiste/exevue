@@ -466,6 +466,27 @@ class TestProgrammeV2(BaseTemporaire):
         self.assertFalse(complet["version_courte"])
         self.assertGreaterEqual(complet["total"], 5)
 
+    def test_les_lieux_imposes_sont_respectes(self):
+        """Maison lundi/jeudi, salle mardi/vendredi : contrainte d'agenda."""
+        attendu = {1: "maison", 2: "salle", 4: "maison", 5: "salle"}
+        lieux = {m["jour_semaine"]: m["lieu"] for m in self._modeles()
+                 if m["jour_semaine"] in attendu and m["type"] != "core"}
+        self.assertEqual(lieux, attendu)
+
+    def test_les_jours_maison_ne_demandent_aucune_machine(self):
+        """Un lieu « maison » qui réclame une poulie serait un lieu faux."""
+        for m in self._modeles():
+            if m["lieu"] != "maison":
+                continue
+            salle = db.q(
+                "SELECT e.nom FROM seance_modele_exo sme "
+                "JOIN exercice e ON e.id = sme.exercice_id "
+                "WHERE sme.seance_modele_id = ? AND e.lieu = 'salle'",
+                (m["id"],))
+            self.assertEqual(
+                [], [r["nom"] for r in salle],
+                f"{m['nom']} est à la maison mais demande du matériel de salle")
+
     def test_la_plyometrie_reste_en_tete_de_seance(self):
         for m in self._modeles():
             lignes = db.q(
@@ -478,6 +499,125 @@ class TestProgrammeV2(BaseTemporaire):
                     self.assertEqual(l["bloc"], "explosif", m["nom"])
                     # rien de « principal » ne doit précéder un exo explosif
                     self.assertNotIn("principal", blocs[:i], m["nom"])
+
+
+class TestMigration6SurBaseExistante(unittest.TestCase):
+    """Le cas qui compte : une base **déjà installée**, pas une base neuve.
+
+    `seed()` s'arrête si le programme existe déjà. Une base à jour du schéma v5
+    doit donc être réalignée par la migration 6, sinon seule une réinstallation
+    verrait les nouveaux lieux — et le test sur base neuve passerait au vert
+    sans rien prouver.
+    """
+
+    ANCIENS_EXOS_JEUDI = [
+        "velo", "rowing_kb_uni", "tirage_vertical", "curl_poulie_basse",
+        "extension_triceps_poulie", "curl_inverse", "kickback_triceps",
+        "elevations_lat_poulie", "suitcase_carry",
+    ]
+
+    def setUp(self):
+        self._fd, self._chemin = tempfile.mkstemp(suffix=".db")
+        os.close(self._fd)
+        os.unlink(self._chemin)
+        db.set_path(self._chemin)
+        # migrations 1 à 5 seulement : l'état d'une installation existante
+        c = db.conn()
+        c.executescript("CREATE TABLE IF NOT EXISTS schema_version ("
+                        "version INTEGER PRIMARY KEY, applique_ts INTEGER);")
+        c.commit()
+        for version, _label, fn in db.MIGRATIONS:
+            if version > 5:
+                break
+            with db.tx() as cx:
+                fn(cx)
+            db._mark(version)
+        self._remettre_ancienne_semaine()
+
+    def tearDown(self):
+        db.close()
+        for suffixe in ("", "-wal", "-shm"):
+            try:
+                os.unlink(self._chemin + suffixe)
+            except OSError:
+                pass
+
+    def _remettre_ancienne_semaine(self):
+        """Recrée la semaine v5 telle qu'elle est en base chez l'utilisateur.
+
+        Le seed lit `SEANCES`, qui porte déjà la nouvelle semaine : sans cette
+        remise en arrière, on migrerait une base déjà correcte.
+        """
+        db.execute("UPDATE seance_modele SET jour_semaine = 1, lieu = 'salle' "
+                   "WHERE nom = 'Dos & biceps'")
+        db.execute("UPDATE seance_modele SET jour_semaine = 2 "
+                   "WHERE nom = 'Pecs, épaules & triceps'")
+        db.execute("UPDATE seance_modele SET lieu = 'salle' "
+                   "WHERE nom = 'Bras (volume) & dos'")
+        self.jeudi = db.q("SELECT id FROM seance_modele "
+                          "WHERE nom = 'Bras (volume) & dos'")[0]["id"]
+        db.execute("DELETE FROM seance_modele_exo WHERE seance_modele_id = ?",
+                   (self.jeudi,))
+        for ordre, code in enumerate(self.ANCIENS_EXOS_JEUDI, start=1):
+            db.execute(
+                "INSERT INTO seance_modele_exo(seance_modele_id, exercice_id, "
+                "ordre, bloc, series_cible) "
+                "SELECT ?, id, ?, 'principal', 3 FROM exercice WHERE code = ?",
+                (self.jeudi, ordre, code))
+
+    def _semaine(self):
+        return {m["jour_semaine"]: (m["nom"], m["lieu"]) for m in db.q(
+            "SELECT m.jour_semaine, m.nom, m.lieu FROM seance_modele m "
+            "JOIN programme p ON p.id = m.programme_id "
+            "WHERE p.actif = 1 AND m.jour_semaine BETWEEN 1 AND 5")}
+
+    def test_la_semaine_est_bien_dans_l_ancien_etat_avant_migration(self):
+        """Garde-fou : sans lui, les assertions d'après ne prouvent rien."""
+        self.assertEqual(self._semaine()[1], ("Dos & biceps", "salle"))
+        self.assertEqual(self._semaine()[4], ("Bras (volume) & dos", "salle"))
+
+    def test_la_migration_replace_les_seances(self):
+        self.assertEqual(db.migrate(), max(v for v, _l, _f in db.MIGRATIONS))
+        semaine = self._semaine()
+        self.assertEqual(semaine[1], ("Pecs, épaules & triceps", "maison"))
+        self.assertEqual(semaine[2], ("Dos & biceps", "salle"))
+        self.assertEqual(semaine[4], ("Bras (volume) & dos", "maison"))
+        self.assertEqual(semaine[5], ("Jambes & explosivité", "salle"))
+
+    def test_le_jeudi_perd_tout_son_materiel_de_salle(self):
+        db.migrate()
+        self.assertEqual(0, db.scalar(
+            "SELECT COUNT(*) FROM seance_modele_exo sme "
+            "JOIN exercice e ON e.id = sme.exercice_id "
+            "WHERE sme.seance_modele_id = ? AND e.lieu = 'salle'",
+            (self.jeudi,)))
+        self.assertGreaterEqual(db.scalar(
+            "SELECT COUNT(*) FROM seance_modele_exo "
+            "WHERE seance_modele_id = ?", (self.jeudi,)), 8)
+
+    def test_les_seances_deja_faites_gardent_leur_modele(self):
+        """Les modèles sont modifiés sur place : l'historique doit survivre."""
+        db.execute("INSERT INTO seance(uuid, seance_modele_id, date, statut) "
+                   "VALUES ('deja-fait', ?, '2026-08-13', 'fait')",
+                   (self.jeudi,))
+        db.migrate()
+        ligne = db.q("SELECT s.seance_modele_id, m.nom FROM seance s "
+                     "JOIN seance_modele m ON m.id = s.seance_modele_id "
+                     "WHERE s.uuid = 'deja-fait'")
+        self.assertEqual(len(ligne), 1)
+        self.assertEqual(ligne[0]["seance_modele_id"], self.jeudi)
+        self.assertEqual(ligne[0]["nom"], "Bras (volume) & dos")
+
+    def test_migration_rejouee_ne_duplique_pas_les_seances(self):
+        db.migrate()
+        avant = db.scalar("SELECT COUNT(*) FROM seance_modele")
+        exos = db.scalar("SELECT COUNT(*) FROM seance_modele_exo")
+        with db.tx() as cx:                 # rejeu direct, hors garde de version
+            from mfcockpit.backend import seed_sport_v2
+            seed_sport_v2.resynchroniser(cx)
+        self.assertEqual(db.scalar("SELECT COUNT(*) FROM seance_modele"), avant)
+        self.assertEqual(db.scalar("SELECT COUNT(*) FROM seance_modele_exo"),
+                         exos)
 
 
 class TestSansProgramme(BaseTemporaire):

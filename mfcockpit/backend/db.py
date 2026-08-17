@@ -480,6 +480,11 @@ def _m5_programme_v2(c):
     seed_sport_v2.seed(c)
 
 
+def _m6_lieux_imposes(c):
+    from . import seed_sport_v2
+    seed_sport_v2.resynchroniser(c)
+
+
 # (version, libellé, fonction) — appliquées dans l'ordre, une seule fois.
 MIGRATIONS = [
     (1, "schéma initial", _m1_schema),
@@ -487,6 +492,8 @@ MIGRATIONS = [
     (3, "seed programme coréen", _m3_seed_coreen),
     (4, "réglages par défaut", _m4_defaults),
     (5, "programme v2 : bras/abdos/dos, bloc abdos du soir", _m5_programme_v2),
+    (6, "lieux imposés : maison lundi/jeudi, salle mardi/vendredi",
+     _m6_lieux_imposes),
 ]
 
 

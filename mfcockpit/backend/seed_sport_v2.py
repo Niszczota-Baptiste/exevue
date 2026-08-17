@@ -6,17 +6,23 @@ Recentrage demandé après la première semaine d'usage : la priorité va aux
 servent le foot et le basket (explosivité, amorti, mollets) plutôt que la prise
 de masse — une seule séance dédiée, plyométrie en tête tant qu'on est frais.
 
-Semaine type :
+Semaine type. Les **lieux sont imposés** : maison le lundi et le jeudi, salle
+le mardi et le vendredi. Le reste est flexible, donc calé sur le confort.
 
 | Jour     | Séance                              | Lieu   | Durée  |
 |----------|-------------------------------------|--------|--------|
-| Lundi    | Dos & biceps                        | Salle  | 50 min |
-| Mardi    | Pecs, épaules & triceps             | Maison | 45 min |
+| Lundi    | Pecs, épaules & triceps             | Maison | 45 min |
+| Mardi    | Dos & biceps                        | Salle  | 50 min |
 | Mercredi | Mobilité & prehab genou/hanche      | Maison | 15 min |
-| Jeudi    | Bras (volume) & dos                 | Salle  | 45 min |
+| Jeudi    | Bras (volume) & dos                 | Maison | 45 min |
 | Vendredi | Jambes & explosivité                | Salle  | 50 min |
 | Samedi   | Course 5 km + Full abdos            | Ext./Maison | 30+30 |
 | Dimanche | Mobilité & prehab genou/hanche      | Maison | 15 min |
+
+Le placement suit l'équipement, pas l'inverse : les deux séances qui ont
+réellement besoin des machines — le tirage/poulies du dos et la presse à
+cuisses — tombent les jours de salle. Le lundi et le jeudi n'utilisent que la
+kettlebell, une chaise et une table.
 
 Plus, **tous les soirs sauf samedi**, un bloc de 15 min d'abdos (rotation
 A/B/C) — que des abdos, plus de gainage anti-rotation déguisé.
@@ -73,6 +79,19 @@ EXERCICES = [
      "Monte les épaules vers les oreilles, pause 1 s, descends lentement. "
      "Aucune rotation, c'est une ligne droite.",
      "Rouler les épaules · plier les bras.", None),
+    ("rowing_australien", "Rowing australien (sous une table)", "force",
+     "maison", "poids_du_corps", "dos", "reps", 0,
+     "Allongé sous une table solide, mains sur le bord, corps gainé en "
+     "planche : tu tires la poitrine vers la table. Plus les pieds sont "
+     "loin, plus c'est dur. C'est le seul vrai tirage disponible à la "
+     "maison — vérifie que la table ne bascule pas avant de t'y suspendre.",
+     "Bassin qui s'affaisse · amplitude coupée en haut.",
+     ["Genoux pliés", "Jambes tendues", "Pieds surélevés"]),
+    ("superman", "Superman (extensions lombaires)", "force", "partout",
+     "tapis", "dos", "reps", 0,
+     "À plat ventre, on décolle bras et jambes de quelques centimètres, "
+     "pause 1 s, on repose. Le regard reste au sol, la nuque dans l'axe.",
+     "Casser la nuque en arrière · monter en force et rebondir.", None),
     # ---- abdos ----
     ("crunch", "Crunch", "core", "partout", "tapis", "abdos", "reps", 0,
      "On décolle les omoplates, pas plus. Le bas du dos reste au sol, "
@@ -114,28 +133,7 @@ EXERCICES = [
 SEANCES = [
     # ---------------------------------------------------------- lundi
     {
-        "jour": 1, "nom": "Dos & biceps", "lieu": "salle", "type": "force",
-        "duree": 50, "ordre": 1,
-        "exos": [
-            _e("velo", "echauffement", 1, 300, repos=0, note="Allure facile"),
-            _e("rotations_epaules", "echauffement", 2, 15, repos=20),
-            _e("tirage_vertical", "principal", 4, 8, 12, repos=120),
-            _e("rowing_poulie_basse", "principal", 4, 10, 12, repos=90),
-            _e("pull_over_kb", "principal", 3, 12, 15, repos=75, charge=12),
-            _e("curl_poulie_basse", "principal", 4, 10, 12, repos=30,
-               superset="A"),
-            _e("curl_marteau_kb", "principal", 3, 10, 15, repos=60,
-               superset="A", charge=24),
-            _e("curl_concentre", "principal", 3, 12, 15, repos=45, charge=12,
-               note=PAR_BRAS),
-            _e("face_pull", "finisher", 3, 15, repos=45,
-               note="Santé d'épaule"),
-            _e("shrug_kb", "finisher", 3, 12, 15, repos=45, charge=24),
-        ],
-    },
-    # ---------------------------------------------------------- mardi
-    {
-        "jour": 2, "nom": "Pecs, épaules & triceps", "lieu": "maison",
+        "jour": 1, "nom": "Pecs, épaules & triceps", "lieu": "maison",
         "type": "force", "duree": 45, "ordre": 1,
         "exos": [
             _e("rotations_epaules", "echauffement", 2, 15, repos=20),
@@ -152,6 +150,27 @@ SEANCES = [
             _e("dips_chaise", "principal", 3, 8, 15, repos=60, superset="B"),
             _e("kickback_triceps", "finisher", 3, 12, 15, repos=45, charge=12,
                note=PAR_BRAS),
+        ],
+    },
+    # ---------------------------------------------------------- mardi
+    {
+        "jour": 2, "nom": "Dos & biceps", "lieu": "salle", "type": "force",
+        "duree": 50, "ordre": 1,
+        "exos": [
+            _e("velo", "echauffement", 1, 300, repos=0, note="Allure facile"),
+            _e("rotations_epaules", "echauffement", 2, 15, repos=20),
+            _e("tirage_vertical", "principal", 4, 8, 12, repos=120),
+            _e("rowing_poulie_basse", "principal", 4, 10, 12, repos=90),
+            _e("pull_over_kb", "principal", 3, 12, 15, repos=75, charge=12),
+            _e("curl_poulie_basse", "principal", 4, 10, 12, repos=30,
+               superset="A"),
+            _e("curl_marteau_kb", "principal", 3, 10, 15, repos=60,
+               superset="A", charge=24),
+            _e("curl_concentre", "principal", 3, 12, 15, repos=45, charge=12,
+               note=PAR_BRAS),
+            _e("face_pull", "finisher", 3, 15, repos=45,
+               note="Santé d'épaule"),
+            _e("shrug_kb", "finisher", 3, 12, 15, repos=45, charge=24),
         ],
     },
     # ---------------------------------------------------------- mercredi
@@ -178,21 +197,24 @@ SEANCES = [
     },
     # ---------------------------------------------------------- jeudi
     {
-        "jour": 4, "nom": "Bras (volume) & dos", "lieu": "salle",
+        "jour": 4, "nom": "Bras (volume) & dos", "lieu": "maison",
         "type": "force", "duree": 45, "ordre": 1,
+        # Version maison : les poulies partent au mardi (jour de salle), le
+        # tirage est repris par le rowing australien sous la table.
         "exos": [
-            _e("velo", "echauffement", 1, 240, repos=0, note="Allure facile"),
+            _e("rotations_epaules", "echauffement", 2, 15, repos=20),
+            _e("rowing_australien", "principal", 4, 8, 12, repos=90,
+               tempo="2-1-2", note="Recule les pieds quand 12 reps passent"),
             _e("rowing_kb_uni", "principal", 4, 10, 12, repos=75,
                tempo="2-1-2", charge=12, note=PAR_BRAS),
-            _e("tirage_vertical", "principal", 3, 10, 12, repos=90),
-            _e("curl_poulie_basse", "principal", 4, 10, 15, repos=30,
-               superset="C"),
-            _e("extension_triceps_poulie", "principal", 4, 10, 15, repos=60,
-               superset="C"),
+            _e("pull_over_kb", "principal", 3, 12, 15, repos=75, charge=12),
+            _e("curl_marteau_kb", "principal", 4, 10, 12, repos=30,
+               superset="C", charge=24),
+            _e("ext_triceps_tete_kb", "principal", 4, 10, 15, repos=60,
+               superset="C", charge=12),
             _e("curl_inverse", "principal", 3, 12, 15, repos=45, charge=12),
-            _e("kickback_triceps", "principal", 3, 12, 15, repos=45, charge=12,
-               note=PAR_BRAS),
-            _e("elevations_lat_poulie", "finisher", 3, 12, 15, repos=45),
+            _e("dips_chaise", "principal", 3, 8, 15, repos=60),
+            _e("superman", "finisher", 3, 15, repos=30),
             _e("suitcase_carry", "finisher", 3, 40, repos=45, charge=12,
                note=PAR_COTE),
         ],
@@ -315,8 +337,8 @@ SEANCES = [
 ]
 
 
-def seed(c):
-    """Sème le programme v2 et désactive le précédent. Idempotent."""
+def _semer_exercices(c) -> dict:
+    """Insère les exercices manquants et renvoie la table `{code: id}`."""
     for row in EXERCICES:
         (code, nom, categorie, lieu, equipement, groupe, unite, chargeable,
          consignes, erreurs, variantes) = row
@@ -328,13 +350,35 @@ def seed(c):
             (code, nom, categorie, lieu, equipement, groupe, unite,
              int(chargeable), consignes, erreurs,
              json.dumps(variantes, ensure_ascii=False) if variantes else None))
+    return {r["code"]: r["id"]
+            for r in c.execute("SELECT id, code FROM exercice").fetchall()}
+
+
+def _poser_exos(c, modele_id: int, exos: list, exo_ids: dict):
+    """(Re)pose la liste d'exercices d'un modèle de séance."""
+    c.execute("DELETE FROM seance_modele_exo WHERE seance_modele_id = ?",
+              (modele_id,))
+    for i, e in enumerate(exos, start=1):
+        eid = exo_ids.get(e["code"])
+        if eid is None:
+            continue
+        c.execute(
+            "INSERT INTO seance_modele_exo(seance_modele_id, exercice_id, "
+            "ordre, bloc, series_cible, reps_min, reps_max, repos_sec, "
+            "tempo, charge_depart, superset_group, note) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (modele_id, eid, i, e["bloc"], e["series"], e["rmin"],
+             e["rmax"], e["repos"], e["tempo"], e["charge"],
+             e["superset"], e["note"]))
+
+
+def seed(c):
+    """Sème le programme v2 et désactive le précédent. Idempotent."""
+    exo_ids = _semer_exercices(c)
 
     if c.execute("SELECT id FROM programme WHERE nom = ?",
                  (PROGRAMME_NOM,)).fetchone():
         return                                    # déjà semé
-
-    exo_ids = {r["code"]: r["id"]
-               for r in c.execute("SELECT id, code FROM exercice").fetchall()}
 
     # L'ancien programme est désactivé, pas supprimé : les séances déjà faites
     # gardent leur modèle et restent lisibles dans les statistiques.
@@ -350,16 +394,49 @@ def seed(c):
             "type, duree_cible_min, ordre_affichage) VALUES (?,?,?,?,?,?,?)",
             (prog_id, s["jour"], s["nom"], s["lieu"], s["type"], s["duree"],
              s["ordre"]))
-        modele_id = cur.lastrowid
-        for i, e in enumerate(s["exos"], start=1):
-            eid = exo_ids.get(e["code"])
-            if eid is None:
-                continue
+        _poser_exos(c, cur.lastrowid, s["exos"], exo_ids)
+
+
+def resynchroniser(c):
+    """Réaligne le programme v2 déjà en base sur `SEANCES` ci-dessus.
+
+    `seed()` s'arrête net si le programme existe déjà : sans ce complément,
+    une base installée resterait bloquée sur l'ancienne semaine et seule une
+    installation neuve verrait le nouveau découpage.
+
+    Les modèles sont **modifiés sur place**, jamais recréés : `seance` pointe
+    dessus, et une séance déjà enregistrée doit garder son modèle pour rester
+    lisible dans les statistiques. L'appariement se fait par nom, en
+    consommant chaque modèle une seule fois — les deux « Mobilité & prehab »
+    sont interchangeables, leur contenu est identique.
+    """
+    prog = c.execute("SELECT id FROM programme WHERE nom = ?",
+                     (PROGRAMME_NOM,)).fetchone()
+    if prog is None:                    # base neuve : le seed fait le travail
+        return seed(c)
+
+    exo_ids = _semer_exercices(c)
+    restants = list(c.execute(
+        "SELECT id, nom FROM seance_modele WHERE programme_id = ? "
+        "ORDER BY jour_semaine, ordre_affichage", (prog["id"],)).fetchall())
+
+    for s in SEANCES:
+        trouve = next((i for i, r in enumerate(restants)
+                       if r["nom"] == s["nom"]), None)
+        if trouve is None:
+            cur = c.execute(
+                "INSERT INTO seance_modele(programme_id, jour_semaine, nom, "
+                "lieu, type, duree_cible_min, ordre_affichage) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (prog["id"], s["jour"], s["nom"], s["lieu"], s["type"],
+                 s["duree"], s["ordre"]))
+            modele_id = cur.lastrowid
+        else:
+            modele_id = restants.pop(trouve)["id"]
             c.execute(
-                "INSERT INTO seance_modele_exo(seance_modele_id, exercice_id, "
-                "ordre, bloc, series_cible, reps_min, reps_max, repos_sec, "
-                "tempo, charge_depart, superset_group, note) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                (modele_id, eid, i, e["bloc"], e["series"], e["rmin"],
-                 e["rmax"], e["repos"], e["tempo"], e["charge"],
-                 e["superset"], e["note"]))
+                "UPDATE seance_modele SET jour_semaine = ?, lieu = ?, "
+                "type = ?, duree_cible_min = ?, ordre_affichage = ? "
+                "WHERE id = ?",
+                (s["jour"], s["lieu"], s["type"], s["duree"], s["ordre"],
+                 modele_id))
+        _poser_exos(c, modele_id, s["exos"], exo_ids)
