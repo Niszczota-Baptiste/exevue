@@ -120,7 +120,7 @@ le widget est désactivé, l'onglet MF l'indique et continue sans planter.
 - **[Aujourd'hui]** — *l'onglet ouvert au lancement* (réglage
   `ui.onglet_demarrage`). Date, **deux streaks séparés** (sport et coréen, qui
   ne dépendent l'un de l'autre en rien), séance du jour avec charge proposée par
-  exercice et case à cocher, bloc core du soir (rotation A/B/C), coréen de la
+  exercice et case à cocher, bloc d'abdos du soir (rotation A/B/C), coréen de la
   semaine + checklist, cardio les jours prévus, foot en salle, bande des 7 jours
   (une pastille par domaine, clic pour le détail) et carte **Accès téléphone**
   avec QR code.
@@ -179,7 +179,7 @@ le widget est désactivé, l'onglet MF l'indique et continue sans planter.
   exactement la même liste que le PC.
 - **Deux streaks indépendants**, aucun joker : une journée non validée casse la
   série, et ça se voit sur la heatmap. Une journée est validée quand *toutes*
-  ses tâches obligatoires sont cochées — bloc core du soir et cardio compris les
+  ses tâches obligatoires sont cochées — bloc d'abdos du soir et cardio compris les
   jours où ils sont planifiés. Les jours de repos, le sport se valide sur le
   bloc mobilité/prehab.
 - Une **séance manquée reste manquée** : elle n'est pas replanifiée et ne décale
@@ -188,6 +188,34 @@ le widget est désactivé, l'onglet MF l'indique et continue sans planter.
   jamais du modèle.
 - Tout ce qui est saisi au téléphone porte `source='tel'` : les stats
   distinguent les deux.
+
+### La semaine type
+
+Le programme actif est **« Haut du corps & abdos »** : priorité aux bras, aux
+abdos et au dos ; les jambes servent le foot et le basket (explosivité, amorti,
+mollets) plutôt que la prise de masse.
+
+| Jour     | Séance                         | Lieu        | Durée   |
+|----------|--------------------------------|-------------|---------|
+| Lundi    | Dos & biceps                   | Salle       | 50 min  |
+| Mardi    | Pecs, épaules & triceps        | Maison      | 45 min  |
+| Mercredi | Mobilité & prehab genou/hanche | Maison      | 15 min  |
+| Jeudi    | Bras (volume) & dos            | Salle       | 45 min  |
+| Vendredi | Jambes & explosivité           | Salle       | 50 min  |
+| Samedi   | Course 5 km + Full abdos       | Ext./Maison | 30+30   |
+| Dimanche | Mobilité & prehab genou/hanche | Maison      | 15 min  |
+
+Plus, **tous les soirs sauf samedi, 15 min d'abdos** en rotation : A gainage ·
+B fléchisseurs · C obliques. Les soirs de grosse journée l'app en garde les
+trois premiers exercices au lieu des cinq. Sur la semaine, ça donne à peu près
+43 % du volume sur les abdos, 39 % sur le haut du corps et 19 % sur les jambes.
+
+La plyométrie (détente basket, appuis foot) est **toujours en tête de séance**,
+le vendredi, tant que les jambes sont fraîches — et plafonnée à 60 contacts.
+
+Le programme précédent (« Reprise & explosivité ») n'est pas supprimé quand la
+base se met à jour : il est **archivé**, pour que les séances déjà enregistrées
+gardent leur modèle et restent lisibles dans les statistiques.
 
 ### Progression
 
@@ -218,6 +246,13 @@ Une fois la page ouverte sur l'iPhone :
 3. Au retour sur le wifi, la file d'opérations part vers le PC et un bundle
    frais est récupéré. Chaque opération porte un `uuid` : appuyer deux fois sur
    « synchroniser » **ne duplique rien**.
+
+Cinq écrans en bas : **Jour** (ce qu'il y a à cocher), **Séance** (un exercice à
+la fois), **Sport** (les prochaines séances, les charges du moment et le bilan
+de la semaine), **Chrono** et **한국어**. Le cache se remplit tout seul au
+premier lancement, donc aucun écran n'est jamais vide ; « Préparer la salle »
+sert à le rafraîchir et à mettre les **médias** en cache, ce qui est la partie
+longue.
 
 Quelques partis pris, dictés par Safari iOS :
 

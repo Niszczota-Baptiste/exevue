@@ -26,6 +26,10 @@ from mfcockpit.backend import (api, db, jour, korean, progression,  # noqa: E402
                                rappels, seed_coreen, stats)
 
 
+def _decale_jour(date_str, jours):
+    return (_dt.date.fromisoformat(date_str) + _dt.timedelta(days=jours)).isoformat()
+
+
 class BaseTemporaire(unittest.TestCase):
     """Une base neuve, migrée, par test."""
 
@@ -60,12 +64,13 @@ class TestMigrations(BaseTemporaire):
 
     def test_migrations_rejouees_deux_fois(self):
         """`migrate()` doit être idempotent : rien ne double, rien ne casse."""
+        derniere = max(v for v, _l, _f in db.MIGRATIONS)
         avant = {t: db.scalar(f"SELECT COUNT(*) FROM {t}", default=0)
                  for t in ("exercice", "programme", "seance_modele",
                            "seance_modele_exo", "kr_semaine", "kr_item",
                            "kr_carte", "kr_exercice")}
-        self.assertEqual(db.migrate(), 4)
-        self.assertEqual(db.migrate(), 4)      # et une troisième pour la route
+        self.assertEqual(db.migrate(), derniere)
+        self.assertEqual(db.migrate(), derniere)   # et une troisième pour la route
         apres = {t: db.scalar(f"SELECT COUNT(*) FROM {t}", default=0)
                  for t in avant}
         self.assertEqual(avant, apres)
@@ -288,13 +293,18 @@ class TestProgression(BaseTemporaire):
     def test_plafond_de_contacts_plyo(self):
         """60 contacts par séance, quelle que soit la semaine du programme."""
         debut = progression.date_debut_programme()
+        vu = 0
         for semaine in range(0, 9):
-            lundi = (debut + _dt.timedelta(weeks=semaine)).isoformat()
-            etat = jour.etat_jour(lundi, materialise=False)
-            for seance in etat["seances"]:
-                self.assertLessEqual(
-                    seance["contacts_plyo"], progression.CONTACTS_MAX,
-                    f"semaine {semaine + 1} : {seance['contacts_plyo']} contacts")
+            for jsem in range(7):
+                d = (debut + _dt.timedelta(weeks=semaine, days=jsem)).isoformat()
+                etat = jour.etat_jour(d, materialise=False)
+                for seance in etat["seances"]:
+                    if seance["contacts_plyo"]:
+                        vu += 1
+                    self.assertLessEqual(
+                        seance["contacts_plyo"], progression.CONTACTS_MAX,
+                        f"{d} : {seance['contacts_plyo']} contacts")
+        self.assertGreater(vu, 0, "aucune séance plyo trouvée dans le programme")
 
     def test_reprise_et_semaine_allegee(self):
         debut = progression.date_debut_programme()
@@ -337,6 +347,28 @@ class TestStreaks(BaseTemporaire):
         self.assertEqual(etat["sport"]["record"], 3)     # le record survit
         self.assertEqual(etat["coreen"]["courant"], 3)
 
+    def test_le_jour_meme_n_est_jamais_marque_manque(self):
+        """Une journée commencée est « en cours », pas ratée."""
+        aujourdhui = jour.jour_courant()
+        jour.materialiser(aujourdhui)
+        cellule = next(c for c in jour.semaine(aujourdhui)
+                       if c["date"] == aujourdhui)
+        self.assertTrue(cellule["aujourdhui"])
+        self.assertEqual(cellule["sport"], "encours")
+        self.assertEqual(cellule["coreen"], "encours")
+        # une seule tâche cochée -> partiel, toujours pas manqué
+        jour.cocher(db.q1("SELECT id FROM tache_jour WHERE date = ? "
+                          "AND domaine = 'coreen'", (aujourdhui,))["id"], True)
+        cellule = next(c for c in jour.semaine(aujourdhui)
+                       if c["date"] == aujourdhui)
+        self.assertEqual(cellule["coreen"], "partiel")
+        # en revanche, une journée passée non faite reste bien manquée
+        hier = _decale_jour(aujourdhui, -1)
+        jour.materialiser(hier)
+        cellule = next((c for c in jour.semaine(hier) if c["date"] == hier), None)
+        if cellule:                       # hier peut tomber sur la semaine d'avant
+            self.assertEqual(cellule["sport"], "manque")
+
     def test_journee_en_cours_ne_casse_pas_la_serie(self):
         """Tant que la journée n'est pas finie, elle ne compte pas contre toi."""
         self._valider_journee("2026-03-09")
@@ -375,6 +407,79 @@ class TestStreaks(BaseTemporaire):
 
 
 # =====================================================================
+class TestProgrammeV2(BaseTemporaire):
+    """La v2 recentre sur bras / abdos / dos ; les jambes servent foot-basket."""
+
+    def _modeles(self):
+        prog = jour.programme_actif()
+        return db.q("SELECT * FROM seance_modele WHERE programme_id = ? "
+                    "ORDER BY jour_semaine, ordre_affichage", (prog["id"],))
+
+    def test_programme_v2_est_actif_et_ancien_archive(self):
+        self.assertEqual(jour.programme_actif()["nom"], "Haut du corps & abdos")
+        # un seul programme actif à la fois, mais l'ancien reste en base pour
+        # que les séances déjà faites gardent leur modèle
+        self.assertEqual(db.scalar("SELECT COUNT(*) FROM programme WHERE actif = 1"), 1)
+        self.assertGreaterEqual(db.scalar("SELECT COUNT(*) FROM programme"), 2)
+
+    def test_le_haut_du_corps_domine_le_volume(self):
+        """Bras + dos + épaules + pecs doivent peser plus que les jambes."""
+        volume = {}
+        for m in self._modeles():
+            for l in db.q(
+                    "SELECT e.groupe, sme.series_cible FROM seance_modele_exo sme "
+                    "JOIN exercice e ON e.id = sme.exercice_id "
+                    "WHERE sme.seance_modele_id = ? AND e.categorie = 'force'",
+                    (m["id"],)):
+                volume[l["groupe"]] = volume.get(l["groupe"], 0) + (l["series_cible"] or 0)
+        haut = sum(volume.get(g, 0) for g in ("bras", "dos", "epaules", "pectoraux"))
+        jambes = sum(volume.get(g, 0)
+                     for g in ("quadriceps", "ischios", "fessiers", "mollets"))
+        self.assertGreater(haut, jambes,
+                           f"haut={haut} séries vs jambes={jambes} séries")
+        self.assertGreater(volume.get("bras", 0), 0)
+
+    def test_bloc_du_soir_que_des_abdos(self):
+        blocs = [m for m in self._modeles() if m["jour_semaine"] == 0]
+        self.assertEqual(len(blocs), 3, "rotation A/B/C attendue")
+        for bloc in blocs:
+            self.assertEqual(bloc["duree_cible_min"], 15)
+            groupes = db.q(
+                "SELECT DISTINCT e.groupe FROM seance_modele_exo sme "
+                "JOIN exercice e ON e.id = sme.exercice_id "
+                "WHERE sme.seance_modele_id = ?", (bloc["id"],))
+            self.assertEqual({g["groupe"] for g in groupes}, {"abdos"},
+                             f"{bloc['nom']} contient autre chose que des abdos")
+            n = db.scalar("SELECT COUNT(*) FROM seance_modele_exo "
+                          "WHERE seance_modele_id = ?", (bloc["id"],))
+            self.assertGreaterEqual(n, 5, f"{bloc['nom']} : {n} exercices")
+
+    def test_version_courte_garde_trois_exercices(self):
+        """Les soirs de grosse journée, 15 min d'abdos ne tombent pas à un exo."""
+        debut = progression.date_debut_programme()
+        lundi = debut.isoformat()                      # jour lourd
+        mercredi = (debut + _dt.timedelta(days=2)).isoformat()   # jour léger
+        court = jour.etat_jour(lundi)["core"]
+        complet = jour.etat_jour(mercredi)["core"]
+        self.assertTrue(court["version_courte"])
+        self.assertEqual(court["total"], 3)
+        self.assertFalse(complet["version_courte"])
+        self.assertGreaterEqual(complet["total"], 5)
+
+    def test_la_plyometrie_reste_en_tete_de_seance(self):
+        for m in self._modeles():
+            lignes = db.q(
+                "SELECT sme.bloc, e.categorie FROM seance_modele_exo sme "
+                "JOIN exercice e ON e.id = sme.exercice_id "
+                "WHERE sme.seance_modele_id = ? ORDER BY sme.ordre", (m["id"],))
+            blocs = [l["bloc"] for l in lignes]
+            for i, l in enumerate(lignes):
+                if l["categorie"] == "plyo":
+                    self.assertEqual(l["bloc"], "explosif", m["nom"])
+                    # rien de « principal » ne doit précéder un exo explosif
+                    self.assertNotIn("principal", blocs[:i], m["nom"])
+
+
 class TestSansProgramme(BaseTemporaire):
 
     def test_materialisation_sans_programme_actif(self):
@@ -467,7 +572,10 @@ class TestBundleEtRappels(BaseTemporaire):
         jour.materialiser(date_str)
         titre, detail = rappels.texte_sport(date_str)
         self.assertIn("Lundi", titre)
-        self.assertIn("Bas du corps", titre)
+        # le nom vient du programme actif : on vérifie qu'il y est vraiment,
+        # pas qu'il vaut une chaîne figée
+        attendu = jour.etat_jour(date_str)["seances"][0]["nom"]
+        self.assertIn(attendu, titre)
         self.assertIn("min", detail)
         titre, detail = rappels.texte_coreen(date_str)
         self.assertTrue(titre.startswith("Coréen S"))
@@ -616,6 +724,62 @@ class TestServeurMobile(BaseTemporaire):
         self.assertIsNone(etat["url"])
         # le reste de l'app continue de fonctionner sans serveur
         self.assertIsInstance(jour.etat_jour(), dict)
+
+
+class TestScrollDesOnglets(unittest.TestCase):
+    """Non-régression : le panneau doit rester scrollable.
+
+    `ThemedScroll` pose un bind `<Configure>` pour replier les libellés. Sans
+    `add="+"`, ce bind **remplace** celui de `CTkScrollableFrame` qui calcule la
+    `scrollregion` : elle reste vide et la molette ne fait plus rien. Le bug est
+    invisible à l'œil sur une petite fenêtre — d'où ce test.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            import tkinter
+            import customtkinter                       # noqa: F401
+            cls._racine = tkinter.Tk()
+            cls._racine.withdraw()
+        except Exception as exc:                       # pas d'affichage : on saute
+            raise unittest.SkipTest(f"Tk indisponible ({exc})")
+
+    @classmethod
+    def tearDownClass(cls):
+        try:
+            cls._racine.destroy()
+        except Exception:
+            pass
+
+    def test_le_bind_de_repli_ne_tue_pas_la_scrollregion(self):
+        import customtkinter as ctk
+
+        from mfcockpit.ui.base import ThemedScroll
+
+        class AppFactice:
+            config_store = None
+
+        fenetre = ctk.CTkToplevel(self._racine)
+        fenetre.geometry("420x360")
+        panneau = ThemedScroll(fenetre, AppFactice())
+        panneau.pack(fill="both", expand=True)
+        for i in range(60):
+            panneau.replier(ctk.CTkLabel(panneau, text=f"ligne {i}" * 3,
+                                         wraplength=300)).pack(fill="x")
+        fenetre.update()
+        fenetre.update_idletasks()
+
+        canvas = panneau._parent_canvas                 # noqa: SLF001
+        self.assertTrue(canvas.cget("scrollregion"),
+                        "scrollregion vide : le scroll est mort")
+        depart = canvas.yview()
+        self.assertNotEqual(depart, (0.0, 1.0),
+                            "le contenu devrait déborder, donc être scrollable")
+        canvas.yview_moveto(0.5)
+        fenetre.update_idletasks()
+        self.assertNotEqual(depart, canvas.yview(), "le panneau ne défile pas")
+        fenetre.destroy()
 
 
 class TestQrCode(unittest.TestCase):

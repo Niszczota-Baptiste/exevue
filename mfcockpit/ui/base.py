@@ -15,7 +15,11 @@ class ThemedScroll(ctk.CTkScrollableFrame):
         self.cfg = app.config_store
         self._a_replier = []
         self._derniere_largeur = 0
-        self.bind("<Configure>", self._sur_redimension)
+        # `add="+"` est IMPÉRATIF : sans lui, ce bind remplace celui que
+        # CTkScrollableFrame pose sur <Configure> pour recalculer sa
+        # `scrollregion`. Elle reste alors vide et la molette ne fait plus
+        # rien — le panneau paraît figé.
+        self.bind("<Configure>", self._sur_redimension, add="+")
 
     def _section(self, title, subtitle=None):
         return theme.section(self, title, subtitle)

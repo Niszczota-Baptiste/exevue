@@ -218,7 +218,10 @@ def _exos_du_modele(modele_id: int, date_str: str, court=False) -> list:
                                 r["ordre"] or 0))
 
     if court:
-        out = out[:1]
+        # Version courte des soirs de grosse journée : on garde les trois
+        # premiers exercices du bloc plutôt qu'un seul — 15 min d'abdos qui
+        # tombent à un exercice, ce n'est plus une séance.
+        out = out[:3]
     for ligne in out:
         series = progression.series_ajustees(ligne["series_cible"], date_str)
         ligne["series_calc"] = min(series, 2) if court else series
@@ -421,6 +424,11 @@ def semaine(date_str=None) -> list:
                 etat = "avenir" if jour >= aujourdhui else "manque"
             elif faits == total:
                 etat = "fait"
+            elif jour == aujourdhui:
+                # La journée n'est pas finie : elle est « en cours », pas
+                # manquée. Afficher du rouge sur le jour même serait faux — et
+                # décourageant un lundi matin.
+                etat = "partiel" if faits else "encours"
             elif faits > 0:
                 etat = "partiel"
             else:

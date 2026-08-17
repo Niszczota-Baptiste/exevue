@@ -178,6 +178,35 @@
     </div>
   </div>
 
+  <!-- ==================== SPORT ==================== -->
+  <section class="ecran" id="e-sport" hidden>
+    <header class="entete">
+      <div>
+        <div class="entete__date">Sport</div>
+        <div class="entete__sous" id="sp-sous"></div>
+      </div>
+      <button class="ico" id="sp-maj" aria-label="Rafraîchir">↻</button>
+    </header>
+
+    <div class="semaine" id="sp-semaine"></div>
+
+    <section class="carte">
+      <h2 class="titre"><i class="losange"></i>Prochaines séances</h2>
+      <div id="sp-prochaines"></div>
+    </section>
+
+    <section class="carte">
+      <h2 class="titre"><i class="losange"></i>Charges du moment</h2>
+      <div class="meta">Ce que tu as soulevé la dernière fois, par exercice.</div>
+      <div id="sp-charges"></div>
+    </section>
+
+    <section class="carte">
+      <h2 class="titre"><i class="losange"></i>Cette semaine</h2>
+      <div id="sp-bilan"></div>
+    </section>
+  </section>
+
   <!-- ==================== CHRONO ==================== -->
   <section class="ecran" id="e-chrono" hidden>
     <header class="entete">
@@ -336,6 +365,7 @@
 <nav class="barre-nav" id="nav">
   <button data-ecran="accueil" class="on">Jour</button>
   <button data-ecran="seance">Séance</button>
+  <button data-ecran="sport">Sport</button>
   <button data-ecran="chrono">Chrono</button>
   <button data-ecran="coreen">한국어</button>
 </nav>

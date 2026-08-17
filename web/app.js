@@ -125,6 +125,31 @@ async function rafraichirJour() {
   rendreAccueil();
 }
 
+/** Garantit qu'on a un bundle en mémoire.
+ *
+ *  Les écrans Coréen et Sport en dépendent entièrement : sans lui, ils
+ *  s'affichent vides. On ne peut pas exiger d'avoir appuyé sur « Préparer la
+ *  salle » — on le récupère tout seul dès qu'il y a du réseau. Le bouton reste
+ *  utile pour rafraîchir et mettre les **médias** en cache, ce qui est long.
+ */
+let bundleEnCours = null;
+function assurerBundle() {
+  if (S.bundle) return Promise.resolve(true);
+  if (bundleEnCours) return bundleEnCours;
+  bundleEnCours = api('/api/bundle').then((b) => {
+    S.bundle = b;
+    S.jour = b.jours[0];
+    LS.set(K.bundle, b);
+    S.enLigne = true;
+    bundleEnCours = null;
+    return true;
+  }).catch(() => {
+    bundleEnCours = null;
+    return false;
+  });
+  return bundleEnCours;
+}
+
 /* --------------------------------------------------------- bandeaux */
 const timersBandeau = {};
 function bandeau(id, texte, ms, classe) {
@@ -342,9 +367,30 @@ document.addEventListener('visibilitychange', () => {
 /* =====================================================================
  *  ACCUEIL
  * ===================================================================*/
-function rendreAccueil() {
+/** Empreinte de tout ce que l'accueil affiche : si elle n'a pas bougé, on ne
+ *  touche pas au DOM. Sans ça, le ping de synchro toutes les 30 s reconstruit
+ *  les listes de tâches et la page semble se relancer toute seule. */
+function signatureAccueil(j) {
+  const seance = (s) => s && [s.nom, s.statut, s.faits, s.total, s.version_courte,
+    (s.exos || []).map((e) => [e.tache_id, e.fait, e.cible, e.charge_proposee])];
+  return JSON.stringify([
+    j.date, j.libelle, j.semaine_programme, j.allegee, j.reprise,
+    j.streaks, j.valide, j.conseils,
+    (j.seances || []).map(seance), seance(j.core), seance(j.cardio),
+    j.coreen && [j.coreen.semaine, j.coreen.theme, j.coreen.cartes_dues,
+                 j.coreen.checklist],
+    S.file.length, S.enLigne, S.prep && S.prep.ts,
+  ]);
+}
+
+let sigAccueil = null;
+
+function rendreAccueil(force) {
   const j = S.jour || (S.bundle && S.bundle.jours && S.bundle.jours[0]);
   if (!j) return;
+  const sig = signatureAccueil(j);
+  if (!force && sig === sigAccueil) return;      // rien n'a bougé : on ne redessine pas
+  sigAccueil = sig;
   $('a-date').textContent = j.libelle || j.date;
   $('a-semaine').textContent =
     `Semaine ${j.semaine_programme} du programme` +
@@ -815,16 +861,112 @@ $('c-retour').onclick = () => aller(S.session ? 'seance' : 'accueil');
 $('c-son').onclick = () => Son.debloquer();
 
 /* =====================================================================
+ *  SPORT — ce qui arrive, et où j'en suis
+ * ===================================================================*/
+const JOURS_COURTS = ['lun', 'mar', 'mer', 'jeu', 'ven', 'sam', 'dim'];
+
+function rendreSport() {
+  if (!S.bundle) {
+    $('sp-sous').textContent = 'Chargement…';
+    assurerBundle().then((ok) => {
+      if (ok && S.ecran === 'sport') rendreSport();
+      else if (!ok) $('sp-sous').textContent = 'Hors ligne — cache vide.';
+    });
+    return;
+  }
+  const jours = S.bundle.jours || [];
+  const auj = (S.jour && S.jour.date) || (jours[0] && jours[0].date);
+  $('sp-sous').textContent =
+    `Semaine ${(S.jour || jours[0] || {}).semaine_programme || '—'} du programme`;
+
+  // --- bande des 7 jours ---
+  const semaine = (S.jour && S.jour.semaine) || [];
+  $('sp-semaine').innerHTML = semaine.map((c) => `
+    <div class="jour${c.aujourdhui ? ' auj' : ''}">
+      <small>${c.lettre}</small>
+      <i class="${c.futur ? '' : c.sport}"></i>
+      <i class="${c.futur ? '' : c.coreen}"></i>
+    </div>`).join('');
+
+  // --- prochaines séances (14 jours, celles qui ont vraiment du contenu) ---
+  const lignes = [];
+  jours.slice(0, 14).forEach((j) => {
+    const seances = [].concat(j.seances || [], j.cardio ? [j.cardio] : []);
+    seances.forEach((s) => {
+      if (!s || !s.total) return;
+      const dans = Math.round((new Date(j.date) - new Date(auj)) / 86400000);
+      const quand = dans <= 0 ? "auj." : (dans === 1 ? 'dem.'
+        : JOURS_COURTS[(new Date(j.date).getDay() + 6) % 7]);
+      lignes.push(`
+        <div class="seance-a-venir">
+          <div class="quand${dans <= 0 ? ' auj' : ''}">${quand}</div>
+          <div style="flex:1">
+            <b>${echap(s.nom)}</b>
+            <small>${echap(s.lieu || '')} · ${s.duree_cible_min} min ·
+              ${s.total} exo${s.total > 1 ? 's' : ''}${
+                s.statut === 'manque' ? ' · manquée'
+                : (s.faits ? ` · ${s.faits} fait${s.faits > 1 ? 's' : ''}` : '')}</small>
+          </div>
+        </div>`);
+    });
+  });
+  $('sp-prochaines').innerHTML = lignes.slice(0, 10).join('')
+    || '<div class="meta">Rien de planifié.</div>';
+
+  // --- charges du moment ---
+  const charges = (S.bundle.exercices || [])
+    .filter((e) => e.chargeable && e.derniere_charge)
+    .sort((a, b) => b.derniere_charge - a.derniere_charge);
+  $('sp-charges').innerHTML = charges.length
+    ? charges.map((e) => `<div class="charge-exo"><span>${echap(e.nom)}</span>
+        <b>${e.derniere_charge} kg</b></div>`).join('')
+    : '<div class="meta">Aucune charge enregistrée — elle se remplit toute seule '
+      + 'dès la première séance.</div>';
+
+  // --- bilan de la semaine ---
+  const faits = semaine.filter((c) => c.sport === 'fait').length;
+  const partiels = semaine.filter((c) => c.sport === 'partiel').length;
+  const manques = semaine.filter((c) => c.sport === 'manque').length;
+  const st = (S.jour && S.jour.streaks) || {};
+  $('sp-bilan').innerHTML = `
+    <div class="bilan">
+      <div><small>Jours validés</small><b>${faits}</b></div>
+      <div><small>Partiels</small><b>${partiels}</b></div>
+      <div><small>Manqués</small><b>${manques}</b></div>
+      <div><small>Série sport</small><b>${(st.sport && st.sport.courant) || 0} j</b></div>
+    </div>`;
+}
+
+$('sp-maj').onclick = () => {
+  S.bundle = null;
+  LS.del(K.bundle);
+  rendreSport();
+};
+
+/* =====================================================================
  *  CORÉEN
  * ===================================================================*/
 let KR = { file: [], courante: null, revelee: false, vue: 'cartes', qcm: null, debut: 0 };
 
 function rendreCoreen() {
   const b = S.bundle && S.bundle.coreen;
-  const sem = b && b.semaine;
+  if (!b) {
+    // Pas encore de bundle : on le récupère au lieu d'afficher un écran vide.
+    $('k-titre').textContent = 'Coréen';
+    $('k-sous').textContent = 'Chargement des cartes…';
+    assurerBundle().then((ok) => {
+      if (ok && S.ecran === 'coreen') rendreCoreen();
+      else if (!ok) $('k-sous').textContent =
+        'Hors ligne — appuie sur « Préparer la salle » quand le wifi revient.';
+    });
+    return;
+  }
+  const sem = b.semaine;
   $('k-titre').textContent = sem ? `S${sem.numero} · ${sem.theme}` : 'Coréen';
-  $('k-sous').textContent = sem ? (sem.note_culture || '').slice(0, 90) : 'Prépare la salle pour charger les cartes.';
-  if (!KR.file.length && b) KR.file = (b.cartes || []).filter((c) => c.due * 1000 <= Date.now());
+  $('k-sous').textContent = sem ? (sem.note_culture || '').slice(0, 90) : '';
+  if (!KR.file.length) {
+    KR.file = (b.cartes || []).filter((c) => c.due * 1000 <= Date.now());
+  }
   majVoixKR();
   carteSuivante();
   rendreDialogues();
@@ -1121,13 +1263,14 @@ function rendreReglages() {
 /* =====================================================================
  *  NAVIGATION
  * ===================================================================*/
-const ECRANS = ['accueil', 'seance', 'chrono', 'coreen', 'fin', 'reglages'];
+const ECRANS = ['accueil', 'seance', 'sport', 'chrono', 'coreen', 'fin', 'reglages'];
 function aller(nom) {
   S.ecran = nom;
   ECRANS.forEach((e) => { $('e-' + e).hidden = (e !== nom); });
   document.querySelectorAll('#nav button').forEach((b) =>
     b.classList.toggle('on', b.dataset.ecran === nom));
   if (nom === 'coreen') rendreCoreen();
+  if (nom === 'sport') rendreSport();
   if (nom === 'chrono') { rendreParamsChrono(); peindreChrono(Chrono.reste()); }
   if (nom === 'seance') rendreExo();
   window.scrollTo(0, 0);
@@ -1166,6 +1309,10 @@ function melanger(t) {
   rendreParamsChrono();
   requestAnimationFrame(boucle);
   synchroniser(true);
+  // Premier lancement : on remplit le cache tout seul pour que les écrans
+  // Sport et Coréen ne soient jamais vides. Les médias, eux, restent derrière
+  // « Préparer la salle » — c'est ce qui prend du temps et de la place.
+  assurerBundle().then((ok) => { if (ok) rendreAccueil(true); });
   // Ping régulier quand la page est visible : détecte le retour du wifi,
   // vide la file, puis récupère un bundle frais.
   setInterval(() => {
@@ -1180,4 +1327,4 @@ function melanger(t) {
  * la file d'envoi ou forcer une synchro depuis la console quand quelque chose
  * cloche en pleine séance. */
 window.MFC = { S, K, LS, Chrono, Son, Reveil, aller, pousser, synchroniser,
-               rendreAccueil, rendreExo, mmss };
+               rendreAccueil, rendreExo, rendreSport, assurerBundle, mmss };

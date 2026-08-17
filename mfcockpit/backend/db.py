@@ -475,12 +475,18 @@ def _m4_defaults(c):
                   (cle, valeur))
 
 
+def _m5_programme_v2(c):
+    from . import seed_sport_v2
+    seed_sport_v2.seed(c)
+
+
 # (version, libellé, fonction) — appliquées dans l'ordre, une seule fois.
 MIGRATIONS = [
     (1, "schéma initial", _m1_schema),
     (2, "seed programme sport", _m2_seed_sport),
     (3, "seed programme coréen", _m3_seed_coreen),
     (4, "réglages par défaut", _m4_defaults),
+    (5, "programme v2 : bras/abdos/dos, bloc abdos du soir", _m5_programme_v2),
 ]
 
 

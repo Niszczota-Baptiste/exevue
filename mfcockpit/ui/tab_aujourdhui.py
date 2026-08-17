@@ -25,7 +25,7 @@ from .theme import C
 RECALC_S = 5.0        # rafraîchissement de l'état hors action utilisateur
 
 COULEUR_ETAT = {"fait": C["green"], "partiel": C["orange"], "manque": C["red"],
-                "avenir": C["grey"]}
+                "avenir": C["grey"], "encours": C["accent_dk"]}
 
 # Les notes « par côté / par jambe / par bras » reviennent sur la moitié des
 # lignes : abrégées, elles tiennent dans la ligne au lieu de la faire déborder.
@@ -193,7 +193,7 @@ class AujourdhuiTab(ThemedScroll):
         f = theme.section(self, "Accès téléphone")
         corps = ctk.CTkFrame(f, fg_color="transparent")
         corps.pack(fill="x")
-        self.cv_qr = tk.Canvas(corps, width=132, height=132,
+        self.cv_qr = tk.Canvas(corps, width=116, height=116,
                                highlightthickness=0, bg=C["card"])
         self.cv_qr.pack(side="left", padx=(0, 10))
         droite = ctk.CTkFrame(corps, fg_color="transparent")
@@ -201,12 +201,12 @@ class AujourdhuiTab(ThemedScroll):
         self.lbl_srv = self.replier(ctk.CTkLabel(droite, text="—", anchor="w",
                                     justify="left", wraplength=180,
                                     font=theme.font("body", 12, "bold"),
-                                    text_color=C["text"]))
+                                    text_color=C["text"]), marge=210)
         self.lbl_srv.pack(fill="x")
         self.lbl_url = self.replier(ctk.CTkLabel(droite, text="", anchor="w",
                                     justify="left", wraplength=180,
                                     font=theme.font("mono", 10),
-                                    text_color=C["accent_lt2"]))
+                                    text_color=C["accent_lt2"]), marge=210)
         self.lbl_url.pack(fill="x", pady=(2, 6))
         ctk.CTkButton(droite, text="Copier l'URL", command=self._copier_url,
                       font=theme.font("head", 11, "bold")).pack(fill="x")
@@ -248,6 +248,7 @@ class AujourdhuiTab(ThemedScroll):
         if self.etat is not None and precedente != self._derniere_largeur:
             self._rendre_seance(self.etat)
             self._rendre_core(self.etat)
+            self._rendre_semaine(self.etat)     # les pastilles suivent la largeur
 
     def refresh(self, snap=None, force=False):
         maintenant = time.time()
@@ -420,7 +421,12 @@ class AujourdhuiTab(ThemedScroll):
         cv = self.cv_semaine
         cv.delete("all")
         jours = e["semaine"]
-        largeur = max(cv.winfo_width(), 300)
+        # Largeur réelle du canvas : un minimum forcé faisait sortir le
+        # dimanche du cadre dès que la fenêtre était un peu étroite.
+        cv.update_idletasks()
+        largeur = cv.winfo_width()
+        if largeur <= 1:
+            largeur = max(self._derniere_largeur - 60, 220)
         pas = largeur / 7.0
         for i, cellule in enumerate(jours):
             cx = pas * i + pas / 2
@@ -495,7 +501,7 @@ class AujourdhuiTab(ThemedScroll):
         cv = self.cv_qr
         cv.delete("all")
         if not url:
-            cv.create_text(66, 66, text="—", fill=C["dim"],
+            cv.create_text(58, 58, text="—", fill=C["dim"],
                            font=theme.font("head", 20))
             return
         try:
@@ -503,13 +509,13 @@ class AujourdhuiTab(ThemedScroll):
         except Exception:
             # Encodage impossible : on ne plante pas, l'URL reste lisible et
             # copiable juste à côté.
-            cv.create_text(66, 60, text="QR\nindisponible", fill=C["dim"],
+            cv.create_text(58, 52, text="QR\nindisponible", fill=C["dim"],
                            justify="center", font=theme.font("head", 10))
             return
         n = len(matrice)
-        cote = 132 // n
-        marge = (132 - cote * n) // 2
-        cv.create_rectangle(0, 0, 132, 132, fill="#ffffff", outline="")
+        cote = 116 // n
+        marge = (116 - cote * n) // 2
+        cv.create_rectangle(0, 0, 116, 116, fill="#ffffff", outline="")
         for r, ligne in enumerate(matrice):
             for c, plein in enumerate(ligne):
                 if plein:
