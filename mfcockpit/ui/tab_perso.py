@@ -14,7 +14,7 @@ except Exception:
 
 import customtkinter as ctk
 
-from ..backend import stacks
+from ..backend import jour, stacks
 from ..backend.tracker import fmt
 from . import theme
 from .base import ThemedScroll
@@ -23,6 +23,8 @@ from .widgets import BarChart, Indicator
 
 # (clé, libellé) — ordre d'affichage
 MODULES = [
+    ("seance", "Séance du jour"),
+    ("coreen_jour", "Coréen du jour"),
     ("presence", "Présences MF + Discord"),
     ("latence", "Latence Minefield"),
     ("today", "Temps du jour"),
@@ -33,7 +35,7 @@ MODULES = [
     ("sante", "Santé du site"),
     ("media", "Média en cours"),
 ]
-DEFAULT_ON = {"presence", "latence", "today", "seoul"}
+DEFAULT_ON = {"seance", "coreen_jour", "presence", "latence", "today", "seoul"}
 
 
 class PersoTab(ThemedScroll):
@@ -123,6 +125,129 @@ class PersoTab(ThemedScroll):
         return ind, val
 
     # ---- modules ----
+    def _m_seance(self, parent):
+        """Version compacte de la carte « Séance du jour » de l'onglet
+        Aujourd'hui — mêmes fonctions backend, donc jamais désynchronisée."""
+        f = theme.section(parent, "Séance du jour")
+        titre = ctk.CTkLabel(f, text="—", anchor="w", justify="left",
+                             wraplength=300, font=theme.font("body", 13, "bold"),
+                             text_color=C["text"])
+        titre.pack(fill="x")
+        meta = ctk.CTkLabel(f, text="", anchor="w", font=theme.font("body", 11),
+                            text_color=C["muted"])
+        meta.pack(fill="x", pady=(0, 4))
+        liste = ctk.CTkFrame(f, fg_color="transparent")
+        liste.pack(fill="x")
+        ctk.CTkButton(f, text="Ouvrir l'onglet Aujourd'hui",
+                      command=lambda: self.app.ouvrir_onglet("aujourdhui"),
+                      font=theme.font("head", 11, "bold")).pack(fill="x",
+                                                                pady=(6, 0))
+        etat_cache = {"signature": None}
+
+        def upd(snap):
+            try:
+                etat = jour.etat_jour()
+            except Exception:
+                titre.configure(text="Base indisponible")
+                return
+            seances = etat["seances"] or ([etat["core"]] if etat["core"] else [])
+            if not seances:
+                titre.configure(text="Repos — rien de planifié.")
+                meta.configure(text="")
+                return
+            s = seances[0]
+            signature = (s["nom"], s["faits"], s["total"], s["statut"])
+            titre.configure(
+                text=f"{s['nom']}"
+                     + (" · MANQUÉE" if s["statut"] == "manque" else ""))
+            meta.configure(text=f"{s['lieu']} · {s['duree_cible_min']} min · "
+                                f"{s['faits']}/{s['total']} fait(s)")
+            if signature == etat_cache["signature"]:
+                return          # rien n'a bougé : on ne redessine pas la liste
+            etat_cache["signature"] = signature
+            for w in liste.winfo_children():
+                w.destroy()
+            for exo in s["exos"][:8]:
+                ligne = ctk.CTkFrame(liste, fg_color="transparent")
+                ligne.pack(fill="x", pady=1)
+                var = ctk.BooleanVar(value=bool(exo["fait"]))
+                # Détail à droite d'abord : sinon la case « expand » le
+                # recouvre (même règle que dans l'onglet Aujourd'hui).
+                detail = exo["cible"]
+                if exo["charge_proposee"]:
+                    detail += f" · {exo['charge_proposee']:g} kg"
+                ctk.CTkLabel(ligne, text=detail, font=theme.font("mono", 10),
+                             text_color=C["accent_lt2"]).pack(side="right",
+                                                              padx=(6, 0))
+                ctk.CTkCheckBox(
+                    ligne, text=exo["nom"][:24],
+                    variable=var, checkbox_width=15, checkbox_height=15,
+                    font=theme.font("body", 11),
+                    text_color=C["dim"] if exo["fait"] else C["text_norm"],
+                    command=lambda i=exo["tache_id"], v=var:
+                    self._cocher(i, v.get())).pack(side="left", fill="x",
+                                                   expand=True)
+        self._updaters.append(upd)
+
+    def _m_coreen_jour(self, parent):
+        f = theme.section(parent, "Coréen du jour")
+        titre = ctk.CTkLabel(f, text="—", anchor="w", justify="left",
+                             wraplength=300, font=theme.font("body", 13, "bold"),
+                             text_color=C["text"])
+        titre.pack(fill="x")
+        meta = ctk.CTkLabel(f, text="", anchor="w", font=theme.font("mono", 11),
+                            text_color=C["accent_lt2"])
+        meta.pack(fill="x", pady=(0, 4))
+        liste = ctk.CTkFrame(f, fg_color="transparent")
+        liste.pack(fill="x")
+        ctk.CTkButton(f, text="▶ Réviser", command=self._reviser,
+                      fg_color=C["accent"], hover_color=C["accent_dk"],
+                      text_color="#f6f2ff", border_width=0,
+                      font=theme.font("head", 11, "bold")).pack(fill="x",
+                                                                pady=(6, 0))
+        etat_cache = {"signature": None}
+
+        def upd(snap):
+            try:
+                etat = jour.etat_jour()
+            except Exception:
+                titre.configure(text="Base indisponible")
+                return
+            kr = etat["coreen"]
+            titre.configure(text=f"Semaine {kr['semaine']} · {kr['theme']}"
+                            if kr["semaine"] else "Programme non initialisé")
+            faits = sum(1 for t in kr["checklist"] if t["fait"])
+            meta.configure(text=f"{kr['cartes_dues']} cartes dues · "
+                                f"{faits}/{len(kr['checklist'])} cases")
+            signature = tuple((t["id"], t["fait"]) for t in kr["checklist"])
+            if signature == etat_cache["signature"]:
+                return
+            etat_cache["signature"] = signature
+            for w in liste.winfo_children():
+                w.destroy()
+            for tache in kr["checklist"]:
+                var = ctk.BooleanVar(value=bool(tache["fait"]))
+                ctk.CTkCheckBox(
+                    liste, text=tache["libelle"], variable=var,
+                    checkbox_width=15, checkbox_height=15,
+                    font=theme.font("body", 11),
+                    text_color=C["dim"] if tache["fait"] else C["text_norm"],
+                    command=lambda i=tache["id"], v=var:
+                    self._cocher(i, v.get())).pack(anchor="w", pady=1)
+        self._updaters.append(upd)
+
+    def _cocher(self, tache_id, fait):
+        if tache_id is None:
+            return
+        jour.cocher(tache_id, bool(fait), source="pc")
+
+    def _reviser(self):
+        self.app.ouvrir_onglet("coreen")
+        try:
+            self.app.tabs["coreen"].start_session()
+        except Exception:
+            pass
+
     def _m_presence(self, parent):
         f = theme.section(parent, "Présences")
         r1 = ctk.CTkFrame(f, fg_color="transparent"); r1.pack(fill="x", pady=2)

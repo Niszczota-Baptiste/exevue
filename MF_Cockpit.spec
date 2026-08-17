@@ -6,10 +6,14 @@
 Gère les hidden-imports/data des paquets qui se chargent dynamiquement
 (mcstatus, dns.*, winotify, winsdk/winrt, customtkinter).
 """
+import os
+
 from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
 hidden = ["pythoncom", "pywintypes", "win32com", "win32com.client",
-          "win32com.client.dynamic"]
+          "win32com.client.dynamic",
+          # stdlib chargée dynamiquement par le serveur mobile / la base
+          "sqlite3", "http.server", "socketserver", "winreg"]
 datas = []
 
 for pkg in ("mcstatus", "dns", "winotify", "winsdk", "winrt", "tzdata"):
@@ -36,6 +40,20 @@ except Exception:
 
 # Thème violet chargé au runtime (os.path.join(__file__, ...)).
 datas += [("mfcockpit/ui/theme_purple.json", "mfcockpit/ui")]
+
+# Page mobile servie par le serveur local (paths.WEB_DIR -> sys._MEIPASS/web).
+for _f in ("index.html", "app.js", "style.css"):
+    _p = os.path.join("web", _f)
+    if os.path.isfile(_p):
+        datas += [(_p, "web")]
+
+# Médias d'exercices livrés avec l'app (le dossier à côté de l'exe reste
+# prioritaire : c'est là que l'utilisateur dépose les siens).
+if os.path.isdir(os.path.join("media", "exos")):
+    for _f in os.listdir(os.path.join("media", "exos")):
+        _p = os.path.join("media", "exos", _f)
+        if os.path.isfile(_p):
+            datas += [(_p, os.path.join("media", "exos"))]
 
 block_cipher = None
 

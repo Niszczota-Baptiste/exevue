@@ -14,7 +14,7 @@ except Exception:
 
 import customtkinter as ctk
 
-from ..backend import notify
+from ..backend import autostart, db, notify, rappels, webserver
 from ..backend.clipboard import ClipboardManager
 from ..backend.config import Config
 from ..backend.korean import Deck
@@ -22,17 +22,20 @@ from ..backend.poller import Poller
 from ..backend.tracker import Tracker
 from . import theme
 from .theme import C
+from .tab_aujourdhui import AujourdhuiTab
 from .tab_coreen import CoreenTab
 from .tab_mf import MFTab
 from .tab_outils import OutilsTab
 from .tab_perso import PersoTab
+from .tab_stats import StatsTab
 from .tab_systeme import SystemeTab
 from .tab_temps import TempsTab
 
 theme.apply_theme()
 
 NAV = [
-    ("Perso", "perso"), ("MF", "mf"), ("Temps", "temps"), ("Outils", "outils"),
+    ("Aujourd'hui", "aujourdhui"), ("Perso", "perso"), ("MF", "mf"),
+    ("Temps", "temps"), ("Stats", "stats"), ("Outils", "outils"),
     ("Coréen", "coreen"), ("Système", "systeme"),
 ]
 
@@ -40,7 +43,16 @@ NAV = [
 def _draw_icon(cv, key, color):
     cv.delete("all")
     o = {"width": 2, "fill": color, "capstyle": "round", "joinstyle": "round"}
-    if key == "perso":
+    if key == "aujourdhui":
+        cv.create_rectangle(2, 3, 16, 16, outline=color, width=2)
+        cv.create_line(2, 7, 16, 7, fill=color, width=2)
+        cv.create_line(6, 11, 8, 13, 12, 9, **o)
+    elif key == "stats":
+        cv.create_line(2, 16, 2, 9, fill=color, width=2, capstyle="round")
+        cv.create_line(7, 16, 7, 4, fill=color, width=2, capstyle="round")
+        cv.create_line(12, 16, 12, 11, fill=color, width=2, capstyle="round")
+        cv.create_line(16, 16, 16, 6, fill=color, width=2, capstyle="round")
+    elif key == "perso":
         for dx, dy in ((2, 2), (10, 2), (2, 10), (10, 10)):
             cv.create_rectangle(dx, dy, dx + 6, dy + 6, outline=color, width=2)
     elif key == "mf":
@@ -69,6 +81,16 @@ class App(ctk.CTk):
         self.config_store = Config()
         self.configure(fg_color=C["page"])
 
+        # Base SQLite : migrations + seed + reprise du deck JSON historique.
+        # Tout est encapsulé : une base illisible ne doit pas empêcher le
+        # cockpit de démarrer, les onglets concernés afficheront l'erreur.
+        try:
+            db.migrate(self.config_store)
+        except Exception as exc:
+            self._erreur_db = str(exc)
+        else:
+            self._erreur_db = None
+
         self.title("MF Cockpit")
         self.geometry(self.config_store.get("window_geometry", "470x860"))
         self.minsize(400, 580)
@@ -79,19 +101,45 @@ class App(ctk.CTk):
         self.deck = Deck(self.config_store)
         self.poller = Poller(self.config_store, self.tracker, self.clipboard)
         notify.set_banner_callback(self.show_banner)
+        notify.set_focus_callback(self.revenir_au_premier_plan)
 
-        self._active = "perso"
+        self._active = self._onglet_demarrage()
         self._nav = {}
 
         self._build_titlebar()
         self._build_banner()
         self._build_body()
 
+        # Les rappels partent de l'ouverture du cockpit : T+2 h, puis toutes
+        # les 2 h, tant que la journée n'est pas validée.
+        rappels.demarrer()
         self.poller.start()
+        # Serveur mobile : thread daemon, et **jamais** bloquant. S'il ne
+        # démarre pas (port pris, pare-feu), la carte « Accès téléphone »
+        # affiche l'état hors ligne et le cockpit continue normalement.
+        try:
+            webserver.demarrer()
+        except Exception:
+            pass
+        # « Démarrer réduit » : la fenêtre part dans la barre des tâches, la
+        # première notification du jour sert de réveil.
+        if autostart.demarre_reduit():
+            try:
+                self.iconify()
+            except Exception:
+                pass
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.after(self.UI_REFRESH_MS, self._tick_ui)
         self._tick_clocks()
         self.after(800, self._launch_korean_review)
+
+    def _onglet_demarrage(self) -> str:
+        """Onglet ouvert au lancement — « Aujourd'hui » par défaut."""
+        try:
+            choix = db.reglage("ui.onglet_demarrage", "aujourdhui")
+        except Exception:
+            choix = "aujourdhui"
+        return choix if choix in dict((k, v) for v, k in NAV) else "aujourdhui"
 
     # ---- titlebar ----
     def _build_titlebar(self):
@@ -174,18 +222,20 @@ class App(ctk.CTk):
                           pady=8)
 
         self.tabs = {
+            "aujourdhui": AujourdhuiTab(self.content, self),
             "perso": PersoTab(self.content, self),
             "mf": MFTab(self.content, self),
             "temps": TempsTab(self.content, self),
+            "stats": StatsTab(self.content, self),
             "outils": OutilsTab(self.content, self),
             "coreen": CoreenTab(self.content, self),
             "systeme": SystemeTab(self.content, self),
         }
-        self._show_tab("perso")
+        self._show_tab(self._active)
 
     def _build_sidebar(self, parent):
         side = ctk.CTkFrame(parent, fg_color=C["sidebar"], corner_radius=0,
-                            width=132, border_width=0)
+                            width=148, border_width=0)
         side.pack(side="left", fill="y")
         side.pack_propagate(False)
 
@@ -251,6 +301,12 @@ class App(ctk.CTk):
             _draw_icon(m["icon"], key, C["accent_lt"] if active else C["muted"])
 
     def _show_tab(self, key):
+        precedent = self.tabs.get(self._active)
+        if precedent is not None and hasattr(precedent, "quitter"):
+            try:
+                precedent.quitter()
+            except Exception:
+                pass
         self._active = key
         for k, tab in self.tabs.items():
             tab.pack_forget()
@@ -258,6 +314,31 @@ class App(ctk.CTk):
         self._style_nav()
         try:
             self.tabs[key].refresh(self.poller.get_snapshot())
+        except Exception:
+            pass
+
+    # ---- API publique pour les autres onglets / les notifications ----
+    def ouvrir_onglet(self, key):
+        if key in self.tabs:
+            self._show_tab(key)
+
+    def revenir_au_premier_plan(self, onglet="aujourdhui"):
+        """Clic sur une notification : fenêtre devant + onglet Aujourd'hui."""
+        def _agir():
+            try:
+                self.deiconify()
+                self.lift()
+                self.focus_force()
+                # coup de « topmost » bref : Windows refuse un lift nu depuis
+                # un process qui n'a pas le focus.
+                if not bool(self.aot_var.get()):
+                    self.attributes("-topmost", True)
+                    self.after(400, lambda: self.attributes("-topmost", False))
+            except Exception:
+                pass
+            self.ouvrir_onglet(onglet)
+        try:
+            self.after(0, _agir)
         except Exception:
             pass
 
@@ -289,7 +370,15 @@ class App(ctk.CTk):
         except Exception:
             pass
         try:
+            webserver.arreter()
+        except Exception:
+            pass
+        try:
             self.tracker.end_session()
+        except Exception:
+            pass
+        try:
+            db.close()
         except Exception:
             pass
         self.destroy()

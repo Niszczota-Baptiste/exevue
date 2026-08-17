@@ -14,3 +14,12 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+
+# Base SQLite du cockpit (sport + coréen)
+cockpit.db
+cockpit.db-wal
+cockpit.db-shm
+
+# Médias d'exercices ajoutés à la main
+media/exos/*
+!media/exos/README.md

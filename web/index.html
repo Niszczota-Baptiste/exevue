@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<!-- viewport-fit=cover + safe-area : plein écran jusque sous l'encoche.
+     user-scalable=no : on ne veut pas zoomer par erreur avec les mains moites. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Cockpit">
+<meta name="theme-color" content="#0c0a13">
+<meta name="format-detection" content="telephone=no">
+<title>MF Cockpit</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ============ bandeaux persistants ============ -->
+<div id="bandeaux" class="bandeaux">
+  <div id="b-cache" class="bandeau bandeau--warn" hidden>
+    ⚠️ <b>Ne ferme pas cet onglet</b> — tout le cache de la séance est dedans.
+  </div>
+  <div id="b-sync" class="bandeau" hidden></div>
+  <div id="b-reveil" class="bandeau bandeau--info" hidden>
+    💡 L'écran va s'éteindre tout seul : Réglages iOS → Écran et luminosité →
+    Verrouillage auto → <b>Jamais</b>.
+  </div>
+</div>
+
+<!-- ============ flash plein écran de fin de repos ============ -->
+<div id="flash" class="flash" hidden>
+  <div class="flash__txt" id="flash-txt">REPOS TERMINÉ</div>
+  <button class="flash__btn" id="flash-ok">C'est parti</button>
+</div>
+
+<!-- vidéo « NoSleep » : ne tourne que si media/nosleep.mp4 a été déposé -->
+<video id="nosleep" muted loop playsinline webkit-playsinline
+       preload="auto" aria-hidden="true" tabindex="-1"></video>
+
+<main id="app">
+
+  <!-- ==================== ACCUEIL ==================== -->
+  <section class="ecran" id="e-accueil">
+    <header class="entete">
+      <div>
+        <div class="entete__date" id="a-date">—</div>
+        <div class="entete__sous" id="a-semaine"></div>
+      </div>
+      <button class="ico" id="a-reglages" aria-label="Réglages">⚙</button>
+    </header>
+
+    <div class="streaks">
+      <div class="streak">
+        <div class="streak__t">SPORT</div>
+        <div class="streak__v" id="a-streak-sport">🔥 0 j</div>
+        <div class="streak__r" id="a-streak-sport-r">record 0</div>
+      </div>
+      <div class="streak">
+        <div class="streak__t">CORÉEN</div>
+        <div class="streak__v" id="a-streak-kr">🔥 0 j</div>
+        <div class="streak__r" id="a-streak-kr-r">record 0</div>
+      </div>
+    </div>
+
+    <div id="a-conseils"></div>
+
+    <section class="carte" id="a-carte-seance" hidden>
+      <h2 class="titre"><i class="losange"></i><span id="a-seance-nom">Séance</span></h2>
+      <div class="meta" id="a-seance-meta"></div>
+      <div class="barre"><div class="barre__in" id="a-seance-barre"></div></div>
+      <button class="gros gros--primaire" id="a-go-seance">▶ Dérouler la séance</button>
+      <button class="gros gros--fade" id="a-manquee">Marquer manquée</button>
+    </section>
+
+    <section class="carte" id="a-carte-core" hidden>
+      <h2 class="titre"><i class="losange"></i><span id="a-core-nom">Bloc core</span></h2>
+      <div class="meta" id="a-core-meta"></div>
+      <ul class="taches" id="a-core-liste"></ul>
+    </section>
+
+    <section class="carte" id="a-carte-cardio" hidden>
+      <h2 class="titre"><i class="losange"></i>Cardio</h2>
+      <div class="meta" id="a-cardio-meta"></div>
+      <div class="champs">
+        <label>Distance (km)<input type="number" inputmode="decimal" step="0.1" id="a-cardio-km"></label>
+        <label>Durée (min)<input type="number" inputmode="numeric" id="a-cardio-min"></label>
+      </div>
+      <button class="gros" id="a-cardio-ok">Enregistrer la sortie</button>
+    </section>
+
+    <section class="carte">
+      <h2 class="titre"><i class="losange"></i>Coréen</h2>
+      <div class="meta" id="a-kr-meta"></div>
+      <ul class="taches" id="a-kr-liste"></ul>
+      <button class="gros gros--primaire" id="a-go-coreen">▶ Réviser</button>
+    </section>
+
+    <section class="carte">
+      <h2 class="titre"><i class="losange"></i>Foot en salle</h2>
+      <div class="champs">
+        <label>Durée (min)<input type="number" inputmode="numeric" id="a-foot-min" value="60"></label>
+        <label>Ressenti /10<input type="number" inputmode="numeric" id="a-foot-res" value="7"></label>
+      </div>
+      <button class="gros" id="a-foot-ok">Enregistrer le foot</button>
+    </section>
+
+    <section class="carte carte--prep">
+      <h2 class="titre"><i class="losange"></i>Hors ligne</h2>
+      <div class="meta" id="a-prep-etat">Jamais préparé.</div>
+      <button class="gros gros--primaire" id="a-preparer">⬇ Préparer la salle</button>
+      <button class="gros" id="a-sync">↻ Synchroniser maintenant</button>
+      <div class="meta" id="a-file"></div>
+    </section>
+  </section>
+
+  <!-- ==================== SÉANCE ==================== -->
+  <section class="ecran" id="e-seance" hidden>
+    <header class="entete entete--seance">
+      <button class="ico" id="s-retour" aria-label="Retour">‹</button>
+      <div class="chrono-seance" id="s-chrono">00:00</div>
+      <button class="ico" id="s-son" aria-label="Activer le son">🔔</button>
+    </header>
+    <div class="barre barre--haut"><div class="barre__in" id="s-barre"></div></div>
+
+    <div class="swipe" id="s-swipe">
+      <div class="exo__pos" id="s-pos">1 / 1</div>
+      <h2 class="exo__nom" id="s-nom">—</h2>
+      <div class="exo__cible" id="s-cible"></div>
+      <img class="exo__media" id="s-media" alt="" hidden>
+      <div class="exo__charge" id="s-charge"></div>
+      <div class="exo__conseil" id="s-conseil"></div>
+
+      <details class="depli">
+        <summary>Consignes</summary>
+        <p id="s-consignes"></p>
+        <p class="erreurs" id="s-erreurs"></p>
+      </details>
+
+      <div class="series" id="s-series"></div>
+
+      <div class="nav-exo">
+        <button class="gros gros--fade" id="s-prec">‹ Précédent</button>
+        <button class="gros gros--fade" id="s-suiv">Suivant ›</button>
+      </div>
+      <button class="gros gros--primaire" id="s-terminer">Terminer la séance</button>
+    </div>
+  </section>
+
+  <!-- ==================== SAISIE D'UNE SÉRIE ==================== -->
+  <div class="modale" id="m-serie" hidden>
+    <div class="modale__in">
+      <div class="modale__t" id="m-titre">Série 1</div>
+
+      <div class="reglette">
+        <button class="pas" data-champ="reps" data-delta="-1">−</button>
+        <div class="reglette__v"><b id="m-reps">10</b><small id="m-unite">reps</small></div>
+        <button class="pas" data-champ="reps" data-delta="1">+</button>
+      </div>
+
+      <div class="reglette" id="m-bloc-charge">
+        <button class="pas" data-champ="charge" data-delta="-1">−</button>
+        <div class="reglette__v"><b id="m-charge">0</b><small>kg</small></div>
+        <button class="pas" data-champ="charge" data-delta="1">+</button>
+      </div>
+      <div class="pas-choix" id="m-pas-choix">
+        <button data-pas="1">pas de 1 kg</button>
+        <button data-pas="2.5" class="on">pas de 2,5 kg</button>
+      </div>
+
+      <div class="rpe">
+        <button data-rpe="6">Facile</button>
+        <button data-rpe="8" class="on">Juste</button>
+        <button data-rpe="10">À l'échec</button>
+      </div>
+
+      <button class="gros gros--primaire" id="m-valider">Valider et lancer le repos</button>
+      <button class="gros gros--fade" id="m-annuler">Annuler</button>
+    </div>
+  </div>
+
+  <!-- ==================== CHRONO ==================== -->
+  <section class="ecran" id="e-chrono" hidden>
+    <header class="entete">
+      <button class="ico" id="c-retour" aria-label="Retour">‹</button>
+      <div class="entete__date">Chrono</div>
+      <button class="ico" id="c-son" aria-label="Activer le son">🔔</button>
+    </header>
+
+    <div class="onglets" id="c-modes">
+      <button data-mode="repos" class="on">Repos</button>
+      <button data-mode="iso">Isométrique</button>
+      <button data-mode="interval">Intervalles</button>
+    </div>
+
+    <div class="compteur" id="c-affiche">00:00</div>
+    <div class="compteur__sous" id="c-sous"></div>
+
+    <div class="champs" id="c-params"></div>
+
+    <div class="nav-exo">
+      <button class="gros" id="c-moins">−30 s</button>
+      <button class="gros" id="c-plus">+30 s</button>
+    </div>
+    <button class="gros gros--primaire" id="c-go">Démarrer</button>
+    <button class="gros gros--fade" id="c-stop">Arrêter</button>
+  </section>
+
+  <!-- ==================== CORÉEN ==================== -->
+  <section class="ecran" id="e-coreen" hidden>
+    <header class="entete">
+      <button class="ico" id="k-retour" aria-label="Retour">‹</button>
+      <div>
+        <div class="entete__date" id="k-titre">Coréen</div>
+        <div class="entete__sous" id="k-sous"></div>
+      </div>
+      <button class="ico" id="k-pomodoro" aria-label="Pomodoro">⏱</button>
+    </header>
+    <div class="pomodoro" id="k-pomo" hidden>20:00</div>
+
+    <div class="onglets" id="k-modes">
+      <button data-vue="cartes" class="on">Cartes</button>
+      <button data-vue="exercice">Exercice</button>
+      <button data-vue="dialogue">Dialogue</button>
+    </div>
+
+    <!-- cartes -->
+    <div id="k-vue-cartes">
+      <div class="carte-kr" id="k-carte">
+        <div class="carte-kr__dir" id="k-dir">KR → FR</div>
+        <div class="carte-kr__recto" id="k-recto">—</div>
+        <div class="carte-kr__romaja" id="k-romaja"></div>
+        <div class="carte-kr__verso" id="k-verso" hidden></div>
+        <div class="carte-kr__ex" id="k-exemple" hidden></div>
+        <button class="ico ico--audio" id="k-audio" aria-label="Écouter">🔊</button>
+      </div>
+      <button class="gros gros--primaire" id="k-reveler">Révéler</button>
+      <div class="nav-exo" id="k-notes" hidden>
+        <button class="gros gros--rouge" id="k-nonsu">Pas su</button>
+        <button class="gros gros--vert" id="k-su">Su</button>
+      </div>
+      <div class="meta" id="k-file"></div>
+    </div>
+
+    <!-- exercice du jour -->
+    <div id="k-vue-exercice" hidden>
+      <div class="meta" id="k-exo-titre"></div>
+      <div id="k-exo-corps"></div>
+    </div>
+
+    <!-- dialogue de la semaine -->
+    <div id="k-vue-dialogue" hidden>
+      <div class="meta">À lire à voix haute.</div>
+      <div id="k-dialogues"></div>
+    </div>
+  </section>
+
+  <!-- ==================== FIN DE SÉANCE ==================== -->
+  <section class="ecran" id="e-fin" hidden>
+    <header class="entete">
+      <button class="ico" id="f-retour" aria-label="Retour">‹</button>
+      <div class="entete__date">Fin de séance</div>
+      <span class="ico" aria-hidden="true"></span>
+    </header>
+
+    <div class="bilan" id="f-bilan"></div>
+    <div id="f-records"></div>
+
+    <section class="carte">
+      <h2 class="titre"><i class="losange"></i>Douleur</h2>
+      <label class="curseur">Genou droit <b id="f-genou-v">0</b>/10
+        <input type="range" min="0" max="10" value="0" id="f-genou"></label>
+      <label class="curseur">Hanche droite <b id="f-hanche-v">0</b>/10
+        <input type="range" min="0" max="10" value="0" id="f-hanche"></label>
+    </section>
+
+    <section class="carte">
+      <h2 class="titre"><i class="losange"></i>Ressenti</h2>
+      <label class="curseur">RPE global <b id="f-rpe-v">7</b>/10
+        <input type="range" min="1" max="10" value="7" id="f-rpe"></label>
+      <textarea id="f-note" placeholder="Note libre (facultatif)"></textarea>
+    </section>
+
+    <button class="gros gros--primaire" id="f-terminer">Terminer</button>
+    <button class="gros" id="f-copier">📋 Copier le résumé</button>
+  </section>
+
+  <!-- ==================== RÉGLAGES ==================== -->
+  <section class="ecran" id="e-reglages" hidden>
+    <header class="entete">
+      <button class="ico" id="r-retour" aria-label="Retour">‹</button>
+      <div class="entete__date">Réglages</div>
+      <span class="ico" aria-hidden="true"></span>
+    </header>
+
+    <section class="carte">
+      <h2 class="titre"><i class="losange"></i>Écran</h2>
+      <p class="meta">Safari ne peut pas garder l'écran allumé sans HTTPS.
+      Le plus fiable : <b>Réglages iOS → Écran et luminosité → Verrouillage
+      auto → Jamais</b> le temps de la séance.</p>
+      <p class="meta" id="r-nosleep"></p>
+    </section>
+
+    <section class="carte">
+      <h2 class="titre"><i class="losange"></i>Son</h2>
+      <p class="meta">iOS exige un geste pour débloquer l'audio. Appuie une
+      fois sur 🔔 en début de séance : les bips de fin de repos passeront même
+      écran verrouillé.</p>
+      <button class="gros" id="r-test-son">Tester le bip</button>
+      <p class="meta" id="r-etat-son"></p>
+    </section>
+
+    <section class="carte">
+      <h2 class="titre"><i class="losange"></i>Coréen</h2>
+      <label class="bascule"><input type="checkbox" id="r-saisie-libre">
+        Saisie libre en hangeul (clavier coréen) au lieu du QCM</label>
+      <p class="meta" id="r-voix"></p>
+    </section>
+
+    <section class="carte">
+      <h2 class="titre"><i class="losange"></i>Intervalles</h2>
+      <div class="champs">
+        <label>Effort (s)<input type="number" inputmode="numeric" id="r-int-effort" value="45"></label>
+        <label>Repos (s)<input type="number" inputmode="numeric" id="r-int-repos" value="15"></label>
+        <label>Tours<input type="number" inputmode="numeric" id="r-int-tours" value="8"></label>
+      </div>
+    </section>
+
+    <section class="carte">
+      <h2 class="titre"><i class="losange"></i>Cache</h2>
+      <p class="meta" id="r-cache"></p>
+      <button class="gros gros--fade" id="r-vider">Vider le cache local</button>
+    </section>
+  </section>
+</main>
+
+<nav class="barre-nav" id="nav">
+  <button data-ecran="accueil" class="on">Jour</button>
+  <button data-ecran="seance">Séance</button>
+  <button data-ecran="chrono">Chrono</button>
+  <button data-ecran="coreen">한국어</button>
+</nav>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -12,7 +12,7 @@ import threading
 import time
 from collections import deque
 
-from . import discord, history, media, notify, server, site
+from . import discord, history, media, notify, rappels, server, site
 
 
 class Poller:
@@ -137,6 +137,12 @@ class Poller:
         if srv:
             self._check_player_alert(srv["online"])
         self._check_break_reminder()
+
+        # 8) rappels sport / coréen — pas de thread en plus, on profite du tick
+        try:
+            rappels.tick()
+        except Exception:
+            pass  # une base indisponible ne doit pas casser le poller
 
         self._publish(
             server=srv, tcp_ms=tcp_ms, discord=dis, site=site_st, media=med,
