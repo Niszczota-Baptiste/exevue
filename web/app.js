@@ -122,7 +122,55 @@ async function rafraichirJour() {
   const j = await api('/api/jour');
   S.jour = j;
   if (S.bundle) { S.bundle.jours[0] = j; LS.set(K.bundle, S.bundle); }
+  // Le plan a changé côté PC : la copie locale ne vaut plus rien.
+  if (j.version_programme && S.bundle
+      && S.bundle.version_programme !== j.version_programme) {
+    await assurerBundle(true);
+    S.jour = j;                       // le bundle vient d'écraser `S.jour`
+    if (S.bundle) { S.bundle.jours[0] = j; LS.set(K.bundle, S.bundle); }
+  }
+  validerSession(j);
   rendreAccueil();
+}
+
+/** Périme la séance en cours quand elle ne correspond plus à la journée.
+ *
+ *  `S.session` est une copie **figée** de la liste d'exercices : c'est elle
+ *  qui permet de finir sa séance sans réseau. Mais rien ne la périmait. Un
+ *  programme modifié sur le PC, ou simplement un jour qui tourne, et le
+ *  téléphone continuait d'afficher l'ancienne liste — pendant que le PC
+ *  affichait la nouvelle — jusqu'à ce qu'on vide le cache à la main.
+ *
+ *  On ne la jette que sur information du serveur : **hors ligne, la séance en
+ *  cours fait foi** et on n'y touche pas, c'est tout l'intérêt à la salle. Les
+ *  séries déjà saisies sont dans `S.file` avec leur propre uuid, elles partent
+ *  de toute façon — périmer la session ne perd aucune répétition.
+ */
+function validerSession(j) {
+  if (!S.session || !j) return false;
+  const ids = (j.seances || []).map((s) => s.seance_id).filter(Boolean);
+  if (j.core && j.core.seance_id) ids.push(j.core.seance_id);
+  const memeJour = !S.session.date || S.session.date === j.date;
+  const connue = !S.session.seance_id || ids.includes(S.session.seance_id);
+  if (memeJour && connue) return false;
+
+  const etaitDedans = S.ecran === 'seance';
+  S.session = null;
+  LS.del(K.session);
+  bandeau('b-sync', memeJour
+    ? 'Séance mise à jour depuis le PC — nouvelle liste chargée.'
+    : 'Nouvelle journée : la séance de la veille a été refermée.',
+    6000, 'bandeau--warn');
+  // On ne renvoie pas bêtement à l'accueil : si l'écran Séance était ouvert,
+  // on y remet celle du jour.
+  const s = etaitDedans && ((j.seances || [])[0] || j.core);
+  if (s) ouvrirSeance(s);
+  else {
+    Reveil.desactiver();
+    if (etaitDedans) aller('accueil');
+  }
+  $('b-cache').hidden = !S.session;
+  return true;
 }
 
 /** Garantit qu'on a un bundle en mémoire.
@@ -133,8 +181,8 @@ async function rafraichirJour() {
  *  utile pour rafraîchir et mettre les **médias** en cache, ce qui est long.
  */
 let bundleEnCours = null;
-function assurerBundle() {
-  if (S.bundle) return Promise.resolve(true);
+function assurerBundle(rafraichir) {
+  if (S.bundle && !rafraichir) return Promise.resolve(true);
   if (bundleEnCours) return bundleEnCours;
   bundleEnCours = api('/api/bundle').then((b) => {
     S.bundle = b;
@@ -604,8 +652,12 @@ $('a-foot-ok').onclick = () => {
 function ouvrirSeance(seance) {
   const memeSeance = S.session && S.session.seance_id === seance.seance_id;
   if (!memeSeance) {
+    const j = S.jour || (S.bundle && S.bundle.jours && S.bundle.jours[0]) || {};
     S.session = {
       seance_id: seance.seance_id,
+      // La journée d'appartenance : sans elle, rien ne permet de dire qu'une
+      // séance retrouvée dans `localStorage` date d'hier.
+      date: j.date || null,
       nom: seance.nom,
       debut: Date.now(),
       index: 0,
@@ -1327,4 +1379,5 @@ function melanger(t) {
  * la file d'envoi ou forcer une synchro depuis la console quand quelque chose
  * cloche en pleine séance. */
 window.MFC = { S, K, LS, Chrono, Son, Reveil, aller, pousser, synchroniser,
-               rendreAccueil, rendreExo, rendreSport, assurerBundle, mmss };
+               rendreAccueil, rendreExo, rendreSport, assurerBundle,
+               validerSession, mmss };

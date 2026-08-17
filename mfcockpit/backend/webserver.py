@@ -9,6 +9,7 @@ ligne, et le cockpit continue de tourner normalement.
 Toutes les routes exigent le jeton (`?t=` ou en-tête `X-Cockpit-Token`), y
 compris les fichiers statiques : le panneau n'est pas ouvert à tout le LAN.
 """
+import hashlib
 import os
 import posixpath
 import secrets
@@ -92,12 +93,15 @@ class _Handler(BaseHTTPRequestHandler):
         _derniere_visite = time.time()
 
     # ---- utilitaires ----
-    def _repondre(self, statut, mime, corps: bytes, cache=None, cookie=None):
+    def _repondre(self, statut, mime, corps: bytes, cache=None, cookie=None,
+                  etag=None):
         self.send_response(statut)
         self.send_header("Content-Type", mime)
         self.send_header("Content-Length", str(len(corps)))
         self.send_header("Cache-Control", cache or "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        if etag:
+            self.send_header("ETag", etag)
         if cookie:
             self.send_header("Set-Cookie", cookie)
         self.end_headers()
@@ -145,10 +149,19 @@ class _Handler(BaseHTTPRequestHandler):
         except OSError:
             self._repondre(500, "text/plain; charset=utf-8", b"lecture KO")
             return
-        # L'app doit pouvoir se recharger après une mise à jour du cockpit :
-        # cache long sur les assets, jamais sur la page elle-même.
-        cache = ("no-store" if ext == ".html"
-                 else "public, max-age=604800, immutable")
+        # `app.js` était servi en `immutable, max-age=604800` : un correctif
+        # mettait donc **une semaine** à atteindre l'iPhone, ou exigeait de
+        # vider le cache de Safari à la main. On revalide à chaque
+        # chargement — sur le réseau local c'est gratuit — et l'ETag renvoie
+        # un 304 vide tant que le fichier n'a pas bougé.
+        cache = "no-store" if ext == ".html" else "no-cache"
+        etag = None
+        if ext != ".html":
+            etag = '"' + hashlib.sha1(corps).hexdigest()[:16] + '"'
+            if self.headers.get("If-None-Match") == etag:
+                self._repondre(304, MIME_STATIQUE.get(ext, "text/plain"), b"",
+                               cache=cache, etag=etag)
+                return
         # En servant la page, on dépose le jeton en cookie : les requêtes
         # suivantes (CSS, JS, médias) l'emportent toutes seules.
         cookie = None
@@ -156,7 +169,7 @@ class _Handler(BaseHTTPRequestHandler):
             cookie = (f"{COOKIE_JETON}={jeton()}; Path=/; Max-Age=31536000; "
                       f"SameSite=Strict")
         self._repondre(200, MIME_STATIQUE.get(ext, "application/octet-stream"),
-                       corps, cache=cache, cookie=cookie)
+                       corps, cache=cache, cookie=cookie, etag=etag)
 
     # ---- verbes ----
     def do_GET(self):

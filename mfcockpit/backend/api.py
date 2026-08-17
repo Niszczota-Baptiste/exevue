@@ -51,6 +51,29 @@ def version_bundle() -> str:
     return hashlib.sha1("|".join(morceaux).encode()).hexdigest()[:12]
 
 
+def version_programme() -> str:
+    """Empreinte du **plan** seul : ne bouge que si le programme change.
+
+    `version_bundle()` remue à chaque série enregistrée — inutilisable pour
+    décider qu'un téléphone doit recharger sa séance : il rechargerait entre
+    deux séries, en pleine salle. Celle-ci ne dépend que de la structure
+    (programme actif, jours, lieux, exercices et leur ordre), donc elle ne
+    change que lorsque la séance affichée n'est réellement plus la bonne.
+    """
+    lignes = db.q(
+        "SELECT m.id, m.jour_semaine, m.nom, m.lieu, m.ordre_affichage, "
+        "       sme.ordre, sme.exercice_id, sme.series_cible "
+        "FROM seance_modele m "
+        "JOIN programme p ON p.id = m.programme_id "
+        "LEFT JOIN seance_modele_exo sme ON sme.seance_modele_id = m.id "
+        "WHERE p.actif = 1 ORDER BY m.id, sme.ordre")
+    brut = "|".join(
+        f"{l['id']},{l['jour_semaine']},{l['nom']},{l['lieu']},"
+        f"{l['ordre_affichage']},{l['ordre']},{l['exercice_id']},"
+        f"{l['series_cible']}" for l in lignes)
+    return hashlib.sha1(brut.encode()).hexdigest()[:12]
+
+
 def ops_en_attente() -> int:
     return int(db.scalar("SELECT COUNT(*) FROM sync_op WHERE applique = 0",
                          default=0))
@@ -59,7 +82,10 @@ def ops_en_attente() -> int:
 # ------------------------------------------------------------------ /jour
 
 def etat_du_jour(date_str=None) -> dict:
-    return jour.etat_jour(date_str or jour.jour_courant())
+    etat = jour.etat_jour(date_str or jour.jour_courant())
+    # Le téléphone s'en sert pour savoir que sa copie du plan est périmée.
+    etat["version_programme"] = version_programme()
+    return etat
 
 
 # ---------------------------------------------------------------- /bundle
@@ -138,6 +164,7 @@ def bundle() -> dict:
         jours.append(jour.etat_jour(date_str, materialise=False))
     return {
         "version": version_bundle(),
+        "version_programme": version_programme(),
         "genere_ts": int(time.time()),
         "jours": jours,
         "programme": _programme_bundle(),

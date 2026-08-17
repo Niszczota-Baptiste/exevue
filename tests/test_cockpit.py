@@ -675,6 +675,38 @@ class TestBundleEtRappels(BaseTemporaire):
         jour.cocher(etat["coreen"]["checklist"][0]["id"], True)
         self.assertNotEqual(avant, api.version_bundle())
 
+    def test_version_programme_ignore_les_series(self):
+        """Le téléphone recharge son plan sur cette empreinte, pas sur l'autre.
+
+        `version_bundle()` bouge à chaque série : s'en servir ferait recharger
+        la séance entre deux séries, en pleine salle.
+        """
+        date_str = jour.jour_courant()
+        jour.materialiser(date_str)
+        seance = jour.etat_jour(date_str)["seances"][0]
+        exo = seance["exos"][0]
+        avant_plan = api.version_programme()
+        avant_bundle = api.version_bundle()
+        jour.enregistrer_serie(seance["seance_id"], exo["exercice_id"],
+                               index_serie=1, reps=10, uid="serie-test-1")
+        self.assertEqual(avant_plan, api.version_programme(),
+                         "une série ne change pas le plan")
+        self.assertNotEqual(avant_bundle, api.version_bundle())
+
+    def test_version_programme_change_avec_le_programme(self):
+        avant = api.version_programme()
+        # on déplace une séance : c'est exactement le cas « lieux imposés »
+        db.execute("UPDATE seance_modele SET jour_semaine = 5 "
+                   "WHERE nom = 'Dos & biceps'")
+        self.assertNotEqual(avant, api.version_programme())
+
+    def test_le_jour_porte_la_version_du_programme(self):
+        """Sans ce champ, le téléphone n'a aucun moyen de se savoir périmé."""
+        self.assertEqual(api.etat_du_jour()["version_programme"],
+                         api.version_programme())
+        self.assertEqual(api.bundle()["version_programme"],
+                         api.version_programme())
+
     def test_media_de_secours_toujours_servi(self):
         mime, corps = api.media("goblet_squat.svg")
         self.assertEqual(mime, "image/svg+xml")
@@ -805,7 +837,7 @@ class TestServeurMobile(BaseTemporaire):
         self.web.arreter()
         super().tearDown()
 
-    def _get(self, chemin, jeton=None, cookie=None):
+    def _get(self, chemin, jeton=None, cookie=None, entetes=None):
         import urllib.error
         import urllib.request
         url = self.base + chemin
@@ -814,6 +846,8 @@ class TestServeurMobile(BaseTemporaire):
         requete = urllib.request.Request(url)
         if cookie:
             requete.add_header("Cookie", f"cockpit_token={cookie}")
+        for cle, valeur in (entetes or {}).items():
+            requete.add_header(cle, valeur)
         try:
             rep = urllib.request.urlopen(requete, timeout=5)
             return rep.status, dict(rep.headers), rep.read()
@@ -850,10 +884,32 @@ class TestServeurMobile(BaseTemporaire):
     def test_entetes_de_cache(self):
         _s, entetes, _c = self._get("/api/jour", jeton=self.jeton)
         self.assertEqual(entetes["Cache-Control"], "no-store")
-        _s, entetes, _c = self._get("/style.css", jeton=self.jeton)
-        self.assertIn("max-age", entetes["Cache-Control"])
         _s, entetes, _c = self._get("/", jeton=self.jeton)
         self.assertEqual(entetes["Cache-Control"], "no-store")
+
+    def test_les_assets_se_revalident_a_chaque_chargement(self):
+        """Un correctif doit atteindre l'iPhone au rechargement, pas 7 jours après.
+
+        `app.js` était servi `immutable, max-age=604800` : Safari ne
+        redemandait jamais le fichier, donc la page mobile restait figée sur
+        l'ancienne version même après mise à jour du cockpit.
+        """
+        for chemin in ("/app.js", "/style.css"):
+            _s, entetes, _c = self._get(chemin, jeton=self.jeton)
+            self.assertEqual(entetes["Cache-Control"], "no-cache", chemin)
+            self.assertNotIn("immutable", entetes["Cache-Control"], chemin)
+            self.assertTrue(entetes.get("ETag"), f"{chemin} sans ETag")
+
+    def test_un_asset_inchange_repond_304_sans_corps(self):
+        """La revalidation ne doit pas coûter un téléchargement complet."""
+        _s, entetes, corps = self._get("/app.js", jeton=self.jeton)
+        etag = entetes["ETag"]
+        self.assertGreater(len(corps), 1000)
+        statut, entetes2, corps2 = self._get(
+            "/app.js", jeton=self.jeton, entetes={"If-None-Match": etag})
+        self.assertEqual(statut, 304)
+        self.assertEqual(corps2, b"")
+        self.assertEqual(entetes2["ETag"], etag)
 
     def test_arret_propre(self):
         self.assertTrue(self.web.actif())

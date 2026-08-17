@@ -284,6 +284,29 @@ Quelques partis pris, dictés par Safari iOS :
 - Un bouton **« Copier le résumé »** met tout le détail de la séance dans le
   presse-papier — filet de sécurité si le cache saute.
 
+#### Quand le PC et le téléphone ne disent pas la même chose
+
+Le cache local est ce qui permet de finir sa séance sans réseau ; c'est aussi
+ce qui peut faire diverger les deux écrans. Deux garde-fous :
+
+- `/api/jour` renvoie une **empreinte du programme**. Dès qu'elle change (une
+  séance déplacée, un exercice remplacé), le téléphone recharge son plan et
+  referme la séance en cours, qui ne correspond plus à rien. Cette empreinte
+  ignore volontairement les séries enregistrées — sinon la page se
+  rechargerait entre deux séries, en pleine salle.
+- Une séance en cours porte **sa date**. Elle est refermée au changement de
+  jour, ou si le serveur ne la reconnaît plus.
+
+Dans les deux cas la décision vient du serveur : **hors ligne, la séance en
+cours fait foi** et rien n'y touche. Les séries déjà saisies partent dans la
+file d'envoi dès la validation, avec leur propre `uuid` — périmer une séance
+ne perd jamais une répétition.
+
+`app.js` et `style.css` sont servis en `no-cache` **avec un ETag** : un
+correctif arrive au premier rechargement, et un fichier inchangé coûte un 304
+vide. Ils étaient servis `immutable, max-age=604800`, ce qui figeait la page
+mobile pendant une semaine après chaque mise à jour du cockpit.
+
 ### Autoriser le pare-feu Windows
 
 Windows bloque les connexions entrantes par défaut. Si le téléphone n'ouvre pas
