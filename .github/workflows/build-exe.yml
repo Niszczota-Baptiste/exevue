@@ -5,10 +5,15 @@ name: Build MF Cockpit (.exe)
 on:
   push:
     branches:
-      - claude/minecraft-tracker-gui-pnufuh
+      - main
+      - "claude/**"
     paths:
       - "mf_cockpit.py"
       - "mfcockpit/**"
+      # La page mobile et les médias sont embarqués dans l'exe via le .spec :
+      # sans eux ici, une modif de l'app iPhone ne relancerait aucun build.
+      - "web/**"
+      - "media/**"
       - "MF_Cockpit.spec"
       - "requirements.txt"
       - ".github/workflows/build-exe.yml"
