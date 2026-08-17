@@ -28,8 +28,9 @@ reprise et refactorée dans le paquet `mfcockpit/`.
   silencieuses.
 - **`mfcockpit/ui/`** — fenêtre customtkinter (sombre, look « cockpit » violet),
   redimensionnable, « toujours au-dessus » optionnel. Navigation par **sidebar**
-  verticale (icônes + état actif) vers les vues **MF · Temps · Outils · Coréen ·
-  Système**, titlebar avec horloges locale/Séoul, cartes à en-têtes losange,
+  verticale (icônes + état actif) vers les vues **Aujourd'hui · Perso · MF ·
+  Alertes · Temps · Stats · Outils · Coréen · Système**, titlebar avec horloges
+  locale/Séoul, cartes à en-têtes losange,
   voyants à halo et graphes maison. Le thème global est piloté par
   `ui/theme_purple.json` (rechargé au démarrage) ; les polices visent
   Rajdhani / JetBrains Mono / Outfit et **retombent proprement** sur les polices
@@ -92,7 +93,8 @@ racine du projet en dev). Il est rechargé au démarrage et **réécrit dès que
 modifies un réglage ou une liste dans l'UI** — rien à recompiler.
 
 Réglages couverts : host/port serveur, `discord_guild_id`, `poll_seconds`,
-seuils de latence, seuils d'alerte joueurs (+ on/off), durée du rappel pause,
+seuils de latence, seuils d'alerte joueurs (+ on/off), flux quêtes/wanted du
+site (`quests_feed` : url, cadence, notifs on/off), durée du rappel pause,
 taille de stack & slots/coffre, N du presse-papier (+ persist on/off), URL de
 santé du site, liens rapides, liens MF, commandes modo, deck coréen &
 mots/session, géométrie de fenêtre & « toujours au-dessus ».
@@ -136,6 +138,19 @@ le widget est désactivé, l'onglet MF l'indique et continue sans planter.
   + vocal) ; latence en continu (ms actuel + min/moy/max glissants, voyant
   couleur, % de perte) ; alerte au franchissement d'un seuil haut/bas (notif
   anti-spam) ; sparkline de fréquentation ; liens money/carto/panneaux.
+- **[Alertes]** — flux « cockpit » du site (`/api/quests/cockpit/<token>.json`,
+  URL secrète à copier depuis le bouton « 🛰️ Cockpit MF » de `/quetes`) : quêtes
+  récurrentes non faites cette période (avec compte à rebours de reset) et
+  quêtes à échéance sous 72 h — chacune avec ses **items requis** (📦), ses
+  **récompenses** (🎁) et ses **coordonnées** (📍, un clic copie `x y z` à
+  coller en jeu) — plus la liste d'items perso « wanted » (priorité, projet,
+  note, coordonnées). Poll toutes les 5 min (`quests_feed.poll_seconds`),
+  notification Windows groupée à chaque *nouveauté* (quête redevenue dispo
+  après un reset, nouvelle échéance, nouvel item) — jamais au premier
+  relevé, désactivable (`quests_feed.notify`). Marche avec le feed actuel du
+  site (les champs absents sont juste omis) ; pour le feed enrichi + la page
+  admin qui pilote ce qui est envoyé, donner `docs/prompt-site-cockpit.md`
+  à Claude sur le repo du site.
 - **[Temps]** — session en cours (solo/multi), totaux, total du jour, moyenne/jour
   et ratio solo/multi sur 7 jours + graphe barres ; rappel pause configurable.
 - **[Outils]** — calculateur de stacks ; commandes modo éditables (copier /

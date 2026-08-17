@@ -54,6 +54,9 @@ def default_config() -> dict:
         "stack": {"size": 64, "chest_slots": 27},
         "clipboard": {"max_items": 20, "persist": False, "poll_seconds": 1.0},
         "site_health_url": "https://baptiste-niszczota.com/health",
+        # Flux « cockpit » du site (quêtes + wanted) : URL secrète par membre,
+        # à copier depuis le bouton « 🛰️ Cockpit MF » de /quetes.
+        "quests_feed": {"url": "", "poll_seconds": 300, "notify": True},
         "mf_links": [
             {"label": "Money", "url": "https://www.minefield.fr/money.php"},
             {"label": "Carto", "url": "https://www.minefield.fr/carto.php"},

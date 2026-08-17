@@ -1,23 +1,18 @@
 name: Build MF Cockpit (.exe)
 
-# Compile le .exe Windows à chaque push sur la branche, et permet aussi un
+# Compile le .exe Windows à chaque push sur main, et permet aussi un
 # déclenchement manuel depuis l'onglet Actions (bouton "Run workflow").
+# L'exe est publié en artefact de run + dans la release roulante « latest »,
+# ce qui donne un lien de téléchargement stable :
+#   https://github.com/Niszczota-Baptiste/exevue/releases/latest/download/MF_Cockpit.exe
 on:
   push:
     branches:
       - main
-      - "claude/**"
-    paths:
-      - "mf_cockpit.py"
-      - "mfcockpit/**"
-      # La page mobile et les médias sont embarqués dans l'exe via le .spec :
-      # sans eux ici, une modif de l'app iPhone ne relancerait aucun build.
-      - "web/**"
-      - "media/**"
-      - "MF_Cockpit.spec"
-      - "requirements.txt"
-      - ".github/workflows/build-exe.yml"
   workflow_dispatch: {}
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -47,3 +42,16 @@ jobs:
           name: MF_Cockpit-windows
           path: dist/MF_Cockpit.exe
           if-no-files-found: error
+
+      # Release roulante : « latest » est recréée à chaque build, le lien
+      # /releases/latest/download/MF_Cockpit.exe reste donc stable.
+      - name: Publier la release « latest »
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --cleanup-tag -y 2>$null
+          gh release create latest dist/MF_Cockpit.exe `
+            --title "MF Cockpit (dernier build)" `
+            --notes "Build automatique de main ($env:GITHUB_SHA)." `
+            --latest
