@@ -80,6 +80,39 @@ def url() -> str:
     return f"http://{ip_lan()}:{port()}/?t={jeton()}"
 
 
+# ------------------------------------------------- estampille des assets
+
+def _empreinte_fichier(nom: str) -> str:
+    """8 hex du contenu de `web/<nom>`, ou une valeur neutre si illisible."""
+    try:
+        with open(os.path.join(paths.WEB_DIR, nom), "rb") as fh:
+            return hashlib.sha1(fh.read()).hexdigest()[:8]
+    except OSError:
+        return "0"
+
+
+def _estampiller_assets(html: bytes) -> bytes:
+    """Ajoute `?v=<empreinte>` aux URL de `style.css` et `app.js`.
+
+    Le nerf de l'affaire : ces fichiers ont été servis pendant un temps en
+    `Cache-Control: immutable`. Un navigateur qui les a gardés ainsi ne les
+    redemandera jamais, quel que soit l'en-tête envoyé ensuite — corriger
+    l'en-tête ne suffit donc pas à réparer un téléphone déjà touché. Changer
+    l'**URL** change la clé de cache : le fichier est forcément retéléchargé.
+
+    La page qui porte ces URL est en `no-store`, donc elle, elle arrive
+    toujours fraîche. C'est ce qui rend la mise à jour possible sans vider le
+    cache de Safari à la main.
+    """
+    for nom in ("style.css", "app.js"):
+        empreinte = _empreinte_fichier(nom).encode()
+        html = html.replace(f'href="{nom}"'.encode(),
+                            b'href="' + nom.encode() + b'?v=' + empreinte + b'"')
+        html = html.replace(f'src="{nom}"'.encode(),
+                            b'src="' + nom.encode() + b'?v=' + empreinte + b'"')
+    return html
+
+
 # ------------------------------------------------------------- handler
 
 class _Handler(BaseHTTPRequestHandler):
@@ -156,7 +189,15 @@ class _Handler(BaseHTTPRequestHandler):
         # un 304 vide tant que le fichier n'a pas bougé.
         cache = "no-store" if ext == ".html" else "no-cache"
         etag = None
-        if ext != ".html":
+        if ext == ".html":
+            # La page, elle, n'est jamais mise en cache : c'est par elle que
+            # passe la mise à jour. On y estampille les assets de leur
+            # empreinte, ce qui change leur URL à chaque build. Sans ça, un
+            # navigateur qui a gardé l'ancien `app.js` sous l'ancien en-tête
+            # `immutable` ne le redemanderait jamais — le correctif ne
+            # pourrait littéralement pas arriver jusqu'au téléphone.
+            corps = _estampiller_assets(corps)
+        else:
             etag = '"' + hashlib.sha1(corps).hexdigest()[:16] + '"'
             if self.headers.get("If-None-Match") == etag:
                 self._repondre(304, MIME_STATIQUE.get(ext, "text/plain"), b"",

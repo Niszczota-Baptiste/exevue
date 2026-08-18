@@ -307,6 +307,13 @@ correctif arrive au premier rechargement, et un fichier inchangé coûte un 304
 vide. Ils étaient servis `immutable, max-age=604800`, ce qui figeait la page
 mobile pendant une semaine après chaque mise à jour du cockpit.
 
+Corriger l'en-tête ne suffisait pas : un navigateur qui avait déjà rangé
+`app.js` en `immutable` ne le redemande plus, quel que soit l'en-tête envoyé
+ensuite. La page y ajoute donc `?v=<empreinte>` — l'URL change à chaque build,
+donc la clé de cache aussi. Comme la page elle-même est en `no-store`, elle
+arrive toujours fraîche : c'est par elle que passe la mise à jour, sans avoir
+à vider le cache de Safari à la main.
+
 ### Autoriser le pare-feu Windows
 
 Windows bloque les connexions entrantes par défaut. Si le téléphone n'ouvre pas

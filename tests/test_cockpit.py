@@ -620,6 +620,48 @@ class TestMigration6SurBaseExistante(unittest.TestCase):
                          exos)
 
 
+class TestDateDeDebutDuProgramme(unittest.TestCase):
+    """Le programme doit démarrer la journée du **cockpit**, pas celle de SQLite.
+
+    `date('now')` est en UTC et ignore la bascule de 4 h du matin. Semé à
+    1 h 30, le programme démarrait donc le lendemain de la journée en cours,
+    et tout le numéro de semaine glissait d'un jour. Le test fige la journée
+    pour ne pas dépendre de l'heure à laquelle il tourne.
+    """
+
+    JOUR_FIGE = "2026-08-17"
+
+    def setUp(self):
+        self._fd, self._chemin = tempfile.mkstemp(suffix=".db")
+        os.close(self._fd)
+        os.unlink(self._chemin)
+        db.set_path(self._chemin)
+        self._vrai = jour.jour_courant
+        jour.jour_courant = lambda ts=None: self.JOUR_FIGE
+
+    def tearDown(self):
+        jour.jour_courant = self._vrai
+        db.close()
+        for suffixe in ("", "-wal", "-shm"):
+            try:
+                os.unlink(self._chemin + suffixe)
+            except OSError:
+                pass
+
+    def test_le_programme_demarre_la_journee_du_cockpit(self):
+        db.migrate()
+        for nom in ("Haut du corps & abdos", "Reprise & explosivité"):
+            debut = db.scalar("SELECT date_debut FROM programme WHERE nom = ?",
+                              (nom,))
+            self.assertEqual(debut, self.JOUR_FIGE, nom)
+        self.assertEqual(progression.date_debut_programme().isoformat(),
+                         self.JOUR_FIGE)
+
+    def test_la_premiere_semaine_commence_bien_le_jour_du_seed(self):
+        db.migrate()
+        self.assertEqual(progression.semaine_programme(self.JOUR_FIGE), 1)
+
+
 class TestSansProgramme(BaseTemporaire):
 
     def test_materialisation_sans_programme_actif(self):
@@ -899,6 +941,40 @@ class TestServeurMobile(BaseTemporaire):
             self.assertEqual(entetes["Cache-Control"], "no-cache", chemin)
             self.assertNotIn("immutable", entetes["Cache-Control"], chemin)
             self.assertTrue(entetes.get("ETag"), f"{chemin} sans ETag")
+
+    def test_la_page_estampille_les_assets(self):
+        """Sans ça, un téléphone déjà en cache `immutable` reste bloqué.
+
+        Corriger l'en-tête ne suffit pas : un navigateur qui a gardé
+        `app.js` sous `Cache-Control: immutable` ne le redemandera jamais.
+        Seul un changement d'**URL** force le téléchargement — et la page qui
+        porte cette URL est en `no-store`, donc elle arrive toujours fraîche.
+        """
+        _s, _e, corps = self._get("/", jeton=self.jeton)
+        page = corps.decode("utf-8")
+        self.assertRegex(page, r'href="style\.css\?v=[0-9a-f]{8}"')
+        self.assertRegex(page, r'src="app\.js\?v=[0-9a-f]{8}"')
+        # l'empreinte suit le contenu réellement servi
+        _s, entetes, appjs = self._get("/app.js", jeton=self.jeton)
+        import hashlib
+        attendu = hashlib.sha1(appjs).hexdigest()[:8]
+        self.assertIn(f'src="app.js?v={attendu}"', page)
+
+    def test_l_estampille_change_avec_le_fichier(self):
+        import hashlib
+        import os
+        from mfcockpit.backend import paths, webserver
+        chemin = os.path.join(paths.WEB_DIR, "app.js")
+        avant = webserver._empreinte_fichier("app.js")
+        origine = open(chemin, "rb").read()
+        try:
+            with open(chemin, "ab") as fh:
+                fh.write(b"\n// modification de test\n")
+            self.assertNotEqual(avant, webserver._empreinte_fichier("app.js"))
+        finally:
+            with open(chemin, "wb") as fh:
+                fh.write(origine)
+        self.assertEqual(avant, webserver._empreinte_fichier("app.js"))
 
     def test_un_asset_inchange_repond_304_sans_corps(self):
         """La revalidation ne doit pas coûter un téléchargement complet."""

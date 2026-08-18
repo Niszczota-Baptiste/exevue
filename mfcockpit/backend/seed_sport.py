@@ -588,6 +588,17 @@ PROGRAMME_NOTE = (
 )
 
 
+def _aujourdhui() -> str:
+    """La journée du cockpit, pas celle de SQLite.
+
+    `date('now')` est en **UTC** et ignore la bascule de 4 h du matin : un
+    programme semé à 1 h démarrait donc le lendemain de la journée en cours,
+    ce qui décalait d'un jour tout le calcul des semaines.
+    """
+    from .jour import jour_courant
+    return jour_courant()
+
+
 def seed(c):
     """Insère le référentiel et le programme. Idempotent (INSERT OR IGNORE)."""
     for row in EXERCICES:
@@ -611,7 +622,7 @@ def seed(c):
         return  # déjà semé
     cur = c.execute(
         "INSERT INTO programme(nom, actif, date_debut, note) "
-        "VALUES (?, 1, date('now'), ?)", (PROGRAMME_NOM, PROGRAMME_NOTE))
+        "VALUES (?, 1, ?, ?)", (PROGRAMME_NOM, _aujourdhui(), PROGRAMME_NOTE))
     prog_id = cur.lastrowid
 
     for s in SEANCES:
