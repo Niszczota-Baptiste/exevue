@@ -23,11 +23,24 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from mfcockpit.backend import (api, db, jour, korean, progression,  # noqa: E402
-                               rappels, seed_coreen, stats)
+                               rappels, seed_coreen, sport, stats)
 
 
 def _decale_jour(date_str, jours):
     return (_dt.date.fromisoformat(date_str) + _dt.timedelta(days=jours)).isoformat()
+
+
+def _premier(date_debut, jour_cible):
+    """Le premier `jour_cible` (1 = lundi … 7 = dimanche) à partir du début.
+
+    Les tests qui parlent de « lundi » ou de « mercredi » se calaient sur
+    `date_debut_programme() + n jours`, ce qui ne vaut que si le programme a
+    démarré un lundi — donc un jour sur sept. Ils échouaient les six autres.
+    """
+    d = date_debut
+    while d.weekday() + 1 != jour_cible:
+        d += _dt.timedelta(days=1)
+    return d.isoformat()
 
 
 class BaseTemporaire(unittest.TestCase):
@@ -393,8 +406,7 @@ class TestStreaks(BaseTemporaire):
 
     def test_jour_de_repos_valide_par_le_bloc_prehab(self):
         """Mercredi : pas de muscu, le sport se valide sur prehab + core."""
-        debut = progression.date_debut_programme()
-        mercredi = (debut + _dt.timedelta(days=2)).isoformat()
+        mercredi = _premier(progression.date_debut_programme(), 3)
         etat = jour.etat_jour(mercredi)
         domaines = {t["domaine"] for t in
                     db.q("SELECT DISTINCT domaine FROM tache_jour WHERE date = ?",
@@ -457,8 +469,8 @@ class TestProgrammeV2(BaseTemporaire):
     def test_version_courte_garde_trois_exercices(self):
         """Les soirs de grosse journée, 15 min d'abdos ne tombent pas à un exo."""
         debut = progression.date_debut_programme()
-        lundi = debut.isoformat()                      # jour lourd
-        mercredi = (debut + _dt.timedelta(days=2)).isoformat()   # jour léger
+        lundi = _premier(debut, 1)                     # jour lourd
+        mercredi = _premier(debut, 3)                  # jour léger
         court = jour.etat_jour(lundi)["core"]
         complet = jour.etat_jour(mercredi)["core"]
         self.assertTrue(court["version_courte"])
@@ -662,6 +674,113 @@ class TestDateDeDebutDuProgramme(unittest.TestCase):
         self.assertEqual(progression.semaine_programme(self.JOUR_FIGE), 1)
 
 
+class TestVueSport(BaseTemporaire):
+    """L'onglet [Sport] : vue d'ensemble du programme et du réel."""
+
+    def test_la_semaine_couvre_les_sept_jours(self):
+        semaine = sport.semaine_detaillee()
+        self.assertEqual(len(semaine), 7)
+        self.assertEqual([j["lettre"] for j in semaine], list("LMMJVSD"))
+        positions = {j["position"] for j in semaine}
+        self.assertIn("aujourdhui", positions)
+        self.assertTrue(all(j["seances"] for j in semaine),
+                        "aucun jour du programme ne doit être vide")
+
+    def test_la_course_du_samedi_n_est_pas_oubliee(self):
+        """`etat_jour` range les séances en trois paniers.
+
+        `seances` (muscu, prehab), `core` (bloc du soir) et `cardio` : n'en
+        lire qu'un fait disparaître la course du samedi de la vue d'ensemble.
+        """
+        samedi = next(j for j in sport.semaine_detaillee() if j["lettre"] == "S")
+        noms = [s["nom"] for s in samedi["seances"]]
+        self.assertTrue(any("Course" in n for n in noms), noms)
+        self.assertTrue(any("abdos" in n.lower() for n in noms), noms)
+
+    def test_consulter_la_semaine_n_ecrit_rien(self):
+        """Regarder jeudi un lundi ne doit pas créer les tâches de jeudi.
+
+        Sinon la journée compterait comme commencée, et les streaks
+        deviendraient faux pour un simple coup d'œil.
+        """
+        jour.materialiser(jour.jour_courant())   # aujourd'hui, lui, est écrit
+        avant = db.scalar("SELECT COUNT(*) FROM tache_jour", default=0)
+        sport.semaine_detaillee(decalage=1)      # semaine prochaine, intacte
+        sport.semaine_detaillee(decalage=-1)
+        sport.prochaines_seances(10)
+        self.assertEqual(db.scalar("SELECT COUNT(*) FROM tache_jour",
+                                   default=0), avant)
+
+    def test_exercices_groupes_par_groupe_musculaire(self):
+        groupes = sport.exercices_semaine_par_groupe()
+        self.assertTrue(groupes)
+        noms = [g["groupe"] for g in groupes]
+        for attendu in ("bras", "dos", "abdos"):
+            self.assertIn(attendu, noms)
+        # la priorité du programme dicte l'ordre d'affichage
+        self.assertLess(noms.index("bras"), noms.index("quadriceps"))
+        for g in groupes:
+            self.assertEqual(
+                g["series_semaine"],
+                sum(e["series_semaine"] for e in g["exercices"]))
+            for e in g["exercices"]:
+                self.assertTrue(e["occurrences"], e["nom"])
+
+    def test_les_blocs_du_soir_comptent_double(self):
+        """Trois rotations pour six soirs : chaque bloc tombe deux fois."""
+        groupes = {g["groupe"]: g for g in sport.exercices_semaine_par_groupe()}
+        planche = next(e for e in groupes["abdos"]["exercices"]
+                       if e["nom"] == "Planche")
+        soirs = [o for o in planche["occurrences"] if o["jour"] == "soir"]
+        self.assertTrue(soirs)
+        attendu = sum((o["series"] or 0) * (2 if o["jour"] == "soir" else 1)
+                      for o in planche["occurrences"])
+        self.assertEqual(planche["series_semaine"], attendu)
+
+    def test_le_programme_complet_liste_tout(self):
+        prog = sport.programme_complet()
+        self.assertEqual(prog["nom"], jour.programme_actif()["nom"])
+        modeles = prog["modeles"]
+        # 7 jours (dont un samedi à deux séances) + 3 blocs du soir
+        self.assertGreaterEqual(len(modeles), 10)
+        soirs = [m for m in modeles if m["jour_semaine"] == 0]
+        self.assertEqual(len(soirs), 3)
+        self.assertTrue(all(m["jour_nom"] == "Tous les soirs" for m in soirs))
+        # les blocs du soir sont rejetés en fin de liste, après dimanche
+        self.assertEqual([m["jour_semaine"] for m in modeles][-3:], [0, 0, 0])
+        for m in modeles:
+            self.assertTrue(m["exos"], m["nom"])
+            self.assertEqual(m["series_total"],
+                             sum(e["series_cible"] or 0 for e in m["exos"]))
+
+    def test_l_ancien_programme_reste_consultable(self):
+        archives = sport.programmes_archives()
+        self.assertTrue(archives)
+        self.assertNotIn(jour.programme_actif()["nom"],
+                         [p["nom"] for p in archives])
+
+    def test_historique_et_apercu_suivent_le_journal(self):
+        date_str = jour.jour_courant()
+        jour.materialiser(date_str)
+        seance = jour.etat_jour(date_str)["seances"][0]
+        exo = seance["exos"][0]
+        jour.enregistrer_serie(seance["seance_id"], exo["exercice_id"], 1,
+                               reps=10, charge_kg=20.0, uid="vue-sport-1")
+        a = sport.apercu()
+        self.assertEqual(a["series"], 1)
+        self.assertEqual(a["volume"], 200.0)
+        histo = sport.historique_seances(40)
+        # une séance seulement planifiée n'est pas encore dans l'historique
+        jour.demarrer_seance(seance["seance_id"])
+        histo = sport.historique_seances(40)
+        ligne = next(h for h in histo if h["id"] == seance["seance_id"])
+        self.assertEqual(ligne["series"], 1)
+        self.assertEqual(ligne["volume"], 200.0)
+        detail = sport.detail_seance(seance["seance_id"])
+        self.assertEqual(len(detail), 1)
+        self.assertEqual(detail[0]["charge_kg"], 20.0)
+
+
 class TestSansProgramme(BaseTemporaire):
 
     def test_materialisation_sans_programme_actif(self):
@@ -782,7 +901,7 @@ class TestBundleEtRappels(BaseTemporaire):
         self.assertEqual(rappels.tick(nuit), [])
 
     def test_textes_de_rappel_sont_utiles(self):
-        date_str = progression.date_debut_programme().isoformat()   # un lundi
+        date_str = _premier(progression.date_debut_programme(), 1)   # un lundi
         jour.materialiser(date_str)
         titre, detail = rappels.texte_sport(date_str)
         self.assertIn("Lundi", titre)
@@ -966,7 +1085,8 @@ class TestServeurMobile(BaseTemporaire):
         from mfcockpit.backend import paths, webserver
         chemin = os.path.join(paths.WEB_DIR, "app.js")
         avant = webserver._empreinte_fichier("app.js")
-        origine = open(chemin, "rb").read()
+        with open(chemin, "rb") as fh:
+            origine = fh.read()
         try:
             with open(chemin, "ab") as fh:
                 fh.write(b"\n// modification de test\n")

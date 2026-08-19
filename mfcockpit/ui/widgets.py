@@ -228,18 +228,43 @@ class Heatmap(tk.Canvas):
                           lambda e: on_click(self.gettags("current")[1]))
 
 
-class BarChart(tk.Canvas):
-    """Barres empilées : solo (violet, bas) + multi (vert, haut)."""
+def _minutes(total) -> str:
+    return f"{int(total / 60)}m"
 
-    def __init__(self, master, width=380, height=120, bg=None, **kw):
+
+class BarChart(tk.Canvas):
+    """Barres empilées : solo (violet, bas) + multi (vert, haut).
+
+    `format_valeur` décide de l'étiquette au-dessus de la barre. Le défaut
+    reste les minutes — c'est le temps de jeu, l'usage d'origine — mais tout
+    appelant qui trace autre chose (des kilos, des séries, des contacts) doit
+    passer le sien : sans ça, un volume de 5 192 kg s'affiche « 86m ».
+    """
+
+    def __init__(self, master, width=380, height=120, bg=None,
+                 format_valeur=None, **kw):
         self._bg = bg or C["page"]
         super().__init__(master, width=width, height=height,
                          highlightthickness=0, bg=self._bg, **kw)
         self._cw = width
         self._ch = height
+        self._format = format_valeur or _minutes
+        self._rows = []
+        # La largeur demandée n'est pas la largeur obtenue : le canvas est
+        # posé en `fill="x"` dans une carte plus étroite. Dessiner sur `width`
+        # ferait sortir les dernières barres du cadre — on redessine donc sur
+        # la largeur réelle. `add="+"` pour ne rien remplacer.
+        self.bind("<Configure>", self._sur_redimension, add="+")
+
+    def _sur_redimension(self, event):
+        if event.width > 1 and abs(event.width - self._cw) > 4:
+            self._cw = event.width
+            if self._rows:
+                self.set_data(self._rows)
 
     def set_data(self, rows):
-        """rows = [(label, solo_seconds, multi_seconds)]."""
+        """rows = [(label, valeur_basse, valeur_haute)]."""
+        self._rows = rows
         self.delete("all")
         w, h = self._cw, self._ch
         if not rows:
@@ -267,5 +292,5 @@ class BarChart(tk.Canvas):
             total = solo + multi
             if total > 0:
                 self.create_text(cx, y_base - solo_h - multi_h - 7,
-                                 text=f"{int(total / 60)}m", fill=C["muted"],
+                                 text=self._format(total), fill=C["muted"],
                                  font=theme.font("head", 8))

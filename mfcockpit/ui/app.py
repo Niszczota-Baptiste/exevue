@@ -28,6 +28,7 @@ from .tab_coreen import CoreenTab
 from .tab_mf import MFTab
 from .tab_outils import OutilsTab
 from .tab_perso import PersoTab
+from .tab_sport import SportTab
 from .tab_stats import StatsTab
 from .tab_systeme import SystemeTab
 from .tab_temps import TempsTab
@@ -35,9 +36,10 @@ from .tab_temps import TempsTab
 theme.apply_theme()
 
 NAV = [
-    ("Aujourd'hui", "aujourdhui"), ("Perso", "perso"), ("MF", "mf"),
-    ("Alertes", "alertes"), ("Temps", "temps"), ("Stats", "stats"),
-    ("Outils", "outils"), ("Coréen", "coreen"), ("Système", "systeme"),
+    ("Aujourd'hui", "aujourdhui"), ("Sport", "sport"), ("Perso", "perso"),
+    ("MF", "mf"), ("Alertes", "alertes"), ("Temps", "temps"),
+    ("Stats", "stats"), ("Outils", "outils"), ("Coréen", "coreen"),
+    ("Système", "systeme"),
 ]
 
 
@@ -48,6 +50,11 @@ def _draw_icon(cv, key, color):
         cv.create_rectangle(2, 3, 16, 16, outline=color, width=2)
         cv.create_line(2, 7, 16, 7, fill=color, width=2)
         cv.create_line(6, 11, 8, 13, 12, 9, **o)
+    elif key == "sport":
+        # haltère : deux disques et une barre
+        cv.create_line(2, 9, 16, 9, fill=color, width=2, capstyle="round")
+        cv.create_rectangle(3, 5, 6, 13, outline=color, width=2)
+        cv.create_rectangle(12, 5, 15, 13, outline=color, width=2)
     elif key == "stats":
         cv.create_line(2, 16, 2, 9, fill=color, width=2, capstyle="round")
         cv.create_line(7, 16, 7, 4, fill=color, width=2, capstyle="round")
@@ -231,6 +238,7 @@ class App(ctk.CTk):
 
         self.tabs = {
             "aujourdhui": AujourdhuiTab(self.content, self),
+            "sport": SportTab(self.content, self),
             "perso": PersoTab(self.content, self),
             "mf": MFTab(self.content, self),
             "alertes": AlertesTab(self.content, self),

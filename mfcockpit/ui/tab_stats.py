@@ -20,6 +20,15 @@ from .widgets import BarChart, Heatmap, LineChart
 VUES = [("Sport", "sport"), ("Corps", "corps"), ("Coréen", "coreen")]
 
 
+def _kilos(total):
+    """Le graphe de volume trace des kilos : sans ça il les lisait en minutes."""
+    return f"{int(total / 1000)}t" if total >= 1000 else f"{int(total)}"
+
+
+def _compte(total):
+    return str(int(total))
+
+
 def _mmss(secondes):
     if not secondes:
         return "—"
@@ -154,7 +163,8 @@ class StatsTab(ThemedScroll):
             self._vide(f, "Pas encore de séance enregistrée.")
         else:
             wrap = self._cadre_graphe(f)
-            bars = BarChart(wrap, width=360, height=120, bg=C["page"])
+            bars = BarChart(wrap, width=360, height=120, bg=C["page"],
+                            format_valeur=_kilos)
             bars.pack(fill="x", padx=6, pady=6)
             bars.set_data([(r["debut"][5:], r["volume"] or 0, 0) for r in hebdo])
 
@@ -242,7 +252,8 @@ class StatsTab(ThemedScroll):
             self._vide(f, "Aucun contact plyo enregistré.")
         else:
             wrap = self._cadre_graphe(f)
-            bars = BarChart(wrap, width=360, height=110, bg=C["page"])
+            bars = BarChart(wrap, width=360, height=110, bg=C["page"],
+                            format_valeur=_compte)
             bars.pack(fill="x", padx=6, pady=6)
             bars.set_data([(r["debut"][5:], r["contacts"] or 0, 0) for r in plyo])
 
@@ -431,6 +442,7 @@ class StatsTab(ThemedScroll):
             self._vide(f, "Rien de prévu — le deck est peut-être vide.")
         else:
             wrap = self._cadre_graphe(f)
-            bars = BarChart(wrap, width=360, height=110, bg=C["page"])
+            bars = BarChart(wrap, width=360, height=110, bg=C["page"],
+                            format_valeur=_compte)
             bars.pack(fill="x", padx=6, pady=6)
             bars.set_data([(r["jour"][5:], r["nb"], 0) for r in prev])

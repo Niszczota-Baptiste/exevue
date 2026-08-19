@@ -28,8 +28,8 @@ reprise et refactorée dans le paquet `mfcockpit/`.
   silencieuses.
 - **`mfcockpit/ui/`** — fenêtre customtkinter (sombre, look « cockpit » violet),
   redimensionnable, « toujours au-dessus » optionnel. Navigation par **sidebar**
-  verticale (icônes + état actif) vers les vues **Aujourd'hui · Perso · MF ·
-  Alertes · Temps · Stats · Outils · Coréen · Système**, titlebar avec horloges
+  verticale (icônes + état actif) vers les vues **Aujourd'hui · Sport ·
+  Perso · MF · Alertes · Temps · Stats · Outils · Coréen · Système**, titlebar avec horloges
   locale/Séoul, cartes à en-têtes losange,
   voyants à halo et graphes maison. Le thème global est piloté par
   `ui/theme_purple.json` (rechargé au démarrage) ; les polices visent
@@ -124,6 +124,18 @@ le widget est désactivé, l'onglet MF l'indique et continue sans planter.
   semaine + checklist, cardio les jours prévus, foot en salle, bande des 7 jours
   (une pastille par domaine, clic pour le détail) et carte **Accès téléphone**
   avec QR code.
+- **[Sport]** — la vue d'ensemble, en quatre onglets. **Semaine** déroule les
+  sept jours avec leurs séances et leurs exercices, du lundi passé au dimanche
+  à venir, chacun marqué *fait · partiel · manquée · prévu* — et les flèches
+  reculent ou avancent d'une semaine. **Exos** liste tous les exercices du
+  programme **groupés par groupe musculaire**, avec le volume hebdomadaire
+  prévu, les jours où ils tombent, le matériel, et ce que le journal en dit
+  (dernière charge, record, 1RM estimé). **Plan** montre le programme sur le
+  papier : les onze séances-modèles, exercice par exercice, séries, reps,
+  repos et charge de départ, plus les programmes archivés. **Passé** reprend
+  les quarante dernières séances avec durée, volume, RPE et douleurs.
+  Consulter une semaine à venir n'écrit **rien** en base : regarder jeudi un
+  mardi ne doit pas créer les tâches de jeudi ni fausser les streaks.
 - **[Stats]** — volume hebdomadaire global et par groupe, charge & 1RM estimé
   (Epley) par exercice, records, séances/semaine vs objectif, assiduité
   mensuelle, répartition maison/salle et PC/téléphone, contacts plyo, calendrier
